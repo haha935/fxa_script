@@ -1,6 +1,7 @@
--- FXA CANNON v4.1 | Survive The Killer | Delta Executor
--- Fixed: close button (InputBegan binding), scroll (AutomaticSize.Y)
--- Window 400x350 | All features | RightShift = unload
+-- FXA CANNON v5.0 | Survive The Killer | Delta Executor
+-- Premium rebuild | 450x380 | All features restored
+-- Tabs: Main · ESP · Move · Players · My Self · Remotes
+-- Close: InputBegan (unblockable) | RightCtrl toggle | RightShift unload
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
@@ -14,14 +15,29 @@ local Workspace         = game:GetService("Workspace")
 local LocalPlayer       = Players.LocalPlayer
 local SESSION_START     = tick()
 
+-- ═══════════════════════════════════════════════════════════
+-- CONFIG
+-- ═══════════════════════════════════════════════════════════
 local CONFIG = {
     BackgroundURL = "https://files.catbox.moe/0oc9zi.jpeg",
     LogoOverride  = "",
     Theme = {
-        Bg=Color3.fromRGB(10,10,12), Panel=Color3.fromRGB(18,18,22), PanelLight=Color3.fromRGB(26,26,32),
-        Border=Color3.fromRGB(42,42,52), Accent=Color3.fromRGB(230,30,40),
-        Text=Color3.fromRGB(235,235,240), TextDim=Color3.fromRGB(130,130,145),
-        Success=Color3.fromRGB(70,220,120), Info=Color3.fromRGB(80,160,255),
+        Bg        = Color3.fromRGB(9, 9, 12),
+        BgGlass   = Color3.fromRGB(16, 16, 20),
+        Panel     = Color3.fromRGB(22, 22, 27),
+        PanelAlt  = Color3.fromRGB(28, 28, 34),
+        PanelHi   = Color3.fromRGB(36, 36, 44),
+        Border    = Color3.fromRGB(48, 48, 58),
+        BorderHi  = Color3.fromRGB(64, 64, 76),
+        Accent    = Color3.fromRGB(235, 32, 44),
+        AccentDim = Color3.fromRGB(120, 18, 24),
+        Text      = Color3.fromRGB(240, 240, 245),
+        TextHi    = Color3.fromRGB(255, 255, 255),
+        TextDim   = Color3.fromRGB(140, 140, 155),
+        TextMute  = Color3.fromRGB(90, 90, 105),
+        Success   = Color3.fromRGB(74, 222, 128),
+        Info      = Color3.fromRGB(96, 165, 250),
+        Gold      = Color3.fromRGB(250, 204, 21),
     },
     LockerNames={"locker","closet","cabinet","wardrobe","hide"},
     TrapNames={"trap","beartrap","spike","mousetrap"},
@@ -29,7 +45,7 @@ local CONFIG = {
     DownedTags={"helpme","help me","downed","wounded","revive"},
     TimerNames={"timer","roundtime","timeleft","countdown"},
     KillReach=6, KillCooldown=0.3, ExitFrontOffset=5,
-    WindowW=400, WindowH=350,
+    WindowW=450, WindowH=380,
 }
 
 local function loadAsset(url, fn)
@@ -42,6 +58,9 @@ end
 local BG_ASSET = loadAsset(CONFIG.BackgroundURL, "fxa_bg.png")
 local LOGO_ASSET = CONFIG.LogoOverride ~= "" and CONFIG.LogoOverride or BG_ASSET
 
+-- ═══════════════════════════════════════════════════════════
+-- STATE
+-- ═══════════════════════════════════════════════════════════
 local State = {
     AutoBecomeKiller=false, AutoKill=false, AutoEscape=false,
     AutoBreakFree=true, AutoSavePlayer=false, TPOnDowned=false,
@@ -51,10 +70,12 @@ local State = {
     ESP_Lockers=false, ESP_Traps=false, ESP_Exits=false, ESP_Distance=true,
 }
 
-local CONNECTIONS, LOOPS = {}, {}
+local CONNECTIONS = {}
 local function track(c) table.insert(CONNECTIONS, c); return c end
-local function trackLoop(t) table.insert(LOOPS, t); return t end
 
+-- ═══════════════════════════════════════════════════════════
+-- UTIL
+-- ═══════════════════════════════════════════════════════════
 local function char() return LocalPlayer.Character end
 local function hrp() local c=char(); return c and c:FindFirstChild("HumanoidRootPart") end
 local function hum() local c=char(); return c and c:FindFirstChildOfClass("Humanoid") end
@@ -103,8 +124,8 @@ local function isGrabbed()
             end
         end
     end
-    local hum = c:FindFirstChildOfClass("Humanoid")
-    if hum and hum.PlatformStand then return true end
+    local hm = c:FindFirstChildOfClass("Humanoid")
+    if hm and hm.PlatformStand then return true end
     return false
 end
 
@@ -141,7 +162,7 @@ local function getKnifeSwingRemote()
 end
 
 -- ═══════════════════════════════════════════════════════════
--- AUTO-BECOME-KILLER
+-- CORE LOOPS
 -- ═══════════════════════════════════════════════════════════
 local lastRoundSignal = 0
 track(Workspace.ChildAdded:Connect(function(c)
@@ -149,7 +170,7 @@ track(Workspace.ChildAdded:Connect(function(c)
 end))
 track(LocalPlayer.CharacterAdded:Connect(function() lastRoundSignal = os.clock() end))
 
-trackLoop(task.spawn(function()
+task.spawn(function()
     while true do
         if State.AutoBecomeKiller and not isKiller(LocalPlayer) then
             pcall(function()
@@ -182,11 +203,9 @@ trackLoop(task.spawn(function()
             task.wait(burst and 0.1 or 0.8)
         else task.wait(0.5) end
     end
-end))
+end)
 
--- ═══════════════════════════════════════════════════════════
 -- AUTO-KILL
--- ═══════════════════════════════════════════════════════════
 local lastKill = 0
 local function nearestSurvivor()
     local myHrp = hrp(); if not myHrp then return nil end
@@ -227,7 +246,7 @@ local function fireKillOn(target)
     if tool then pcall(function() tool:Activate() end) end
 end
 
-trackLoop(task.spawn(function()
+task.spawn(function()
     while true do
         if State.AutoKill and isKiller(LocalPlayer) then
             local now = os.clock()
@@ -251,11 +270,9 @@ trackLoop(task.spawn(function()
         end
         task.wait(0.05)
     end
-end))
+end)
 
--- ═══════════════════════════════════════════════════════════
--- AUTO-SAVE / DOWNED TP
--- ═══════════════════════════════════════════════════════════
+-- AUTO-SAVE
 local function findProximityPrompt(c)
     if not c then return nil end
     for _, d in ipairs(c:GetDescendants()) do
@@ -295,7 +312,7 @@ local function nearestDowned()
     return best
 end
 
-trackLoop(task.spawn(function()
+task.spawn(function()
     while true do
         if State.AutoSavePlayer then
             local t = nearestDowned(); local myHrp = hrp()
@@ -310,12 +327,10 @@ trackLoop(task.spawn(function()
         end
         task.wait(0.35)
     end
-end))
+end)
 
--- ═══════════════════════════════════════════════════════════
--- AUTO BREAK FREE
--- ═══════════════════════════════════════════════════════════
-trackLoop(task.spawn(function()
+-- BREAK FREE
+task.spawn(function()
     while true do
         if State.AutoBreakFree and isGrabbed() then
             pcall(function()
@@ -327,11 +342,9 @@ trackLoop(task.spawn(function()
         end
         task.wait(0.2)
     end
-end))
+end)
 
--- ═══════════════════════════════════════════════════════════
--- HEARTBEAT: movement + godmode
--- ═══════════════════════════════════════════════════════════
+-- HEARTBEAT
 track(RunService.Heartbeat:Connect(function()
     if State.Godmode then
         local h = hum()
@@ -367,9 +380,7 @@ track(RunService.Heartbeat:Connect(function()
     end
 end))
 
--- ═══════════════════════════════════════════════════════════
 -- AUTO-ESCAPE
--- ═══════════════════════════════════════════════════════════
 local function findExitDoor()
     local myHrp = hrp(); if not myHrp then return nil end
     local best, bestDist = nil, math.huge
@@ -396,7 +407,7 @@ local function isEscapeOpen(door)
     return false
 end
 
-trackLoop(task.spawn(function()
+task.spawn(function()
     while true do
         if State.AutoEscape and not isKiller(LocalPlayer) then
             local d = findExitDoor(); local myHrp = hrp()
@@ -408,7 +419,7 @@ trackLoop(task.spawn(function()
         end
         task.wait(0.25)
     end
-end))
+end)
 
 -- ═══════════════════════════════════════════════════════════
 -- ESP
@@ -544,14 +555,14 @@ end
 track(RunService.Heartbeat:Connect(function()
     if State.ESP_Survivor or State.ESP_Killer or State.ESP_Downed then playerESP() end
 end))
-trackLoop(task.spawn(function()
+task.spawn(function()
     while true do
         if State.ESP_Lockers then lockerESP() end
         if State.ESP_Traps then trapESP() end
         if State.ESP_Exits then exitESP() end
         task.wait(1)
     end
-end))
+end)
 
 -- ═══════════════════════════════════════════════════════════
 -- UI HELPERS
@@ -580,45 +591,47 @@ local W, H = CONFIG.WindowW, CONFIG.WindowH
 local Main = mk("Frame", {
     Name="Main", Size=UDim2.fromOffset(W,H),
     Position=UDim2.new(0.5,-W/2,0.5,-H/2),
-    BackgroundColor3=T.Bg, BorderSizePixel=0, ClipsDescendants=true,
-    Active=false,
+    BackgroundColor3=T.Bg, BorderSizePixel=0, ClipsDescendants=true, Active=false,
 }, gui)
-corner(Main, UDim.new(0,12)); stroke(Main, T.Border, 1)
+corner(Main, UDim.new(0,14)); stroke(Main, T.Border, 1)
 
 if BG_ASSET then
     mk("ImageLabel", {
         Name="BG", Size=UDim2.fromScale(1,1),
         BackgroundTransparency=1, Image=BG_ASSET,
         ScaleType=Enum.ScaleType.Crop,
-        ImageTransparency=0.3, ZIndex=1,
+        ImageTransparency=0.42, ZIndex=1,
     }, Main)
 end
 local BGDim = mk("Frame", {
     Size=UDim2.fromScale(1,1),
-    BackgroundColor3=Color3.fromRGB(6,6,8),
-    BackgroundTransparency=BG_ASSET and 0.5 or 0.05,
+    BackgroundColor3=Color3.fromRGB(5,5,7),
+    BackgroundTransparency=BG_ASSET and 0.55 or 0.05,
     BorderSizePixel=0, ZIndex=2,
 }, Main)
 mk("UIGradient", {
     Rotation=90,
     Transparency=NumberSequence.new({
-        NumberSequenceKeypoint.new(0,0.1),
-        NumberSequenceKeypoint.new(1,0.75)}),
+        NumberSequenceKeypoint.new(0,0.15),
+        NumberSequenceKeypoint.new(1,0.8)}),
 }, BGDim)
 
--- Top bar
+-- ═══════════════════════════════════════════════════════════
+-- TOP BAR — logo, title, live killer/time readouts, buttons
+-- ═══════════════════════════════════════════════════════════
 local TopBar = mk("Frame", {
-    Size=UDim2.new(1,0,0,48),
-    BackgroundTransparency=1, ZIndex=10,
-    Active=true,
+    Size=UDim2.new(1,0,0,62),
+    BackgroundColor3=Color3.fromRGB(14,14,18),
+    BackgroundTransparency=0.3,
+    BorderSizePixel=0, ZIndex=10, Active=true,
 }, Main)
 
--- Circular logo
-local LOGO_SIZE = 34
+-- circular logo
+local LOGO_SIZE = 40
 local Logo = mk("ImageLabel", {
     Name="Logo",
     Size=UDim2.fromOffset(LOGO_SIZE, LOGO_SIZE),
-    Position=UDim2.fromOffset(10, 7),
+    Position=UDim2.fromOffset(14, 11),
     BackgroundTransparency=1,
     Image=LOGO_ASSET or "",
     ScaleType=Enum.ScaleType.Crop,
@@ -628,27 +641,38 @@ corner(Logo, UDim.new(1, 0))
 mk("UIStroke", {Color=T.Accent, Thickness=2, ApplyStrokeMode=Enum.ApplyStrokeMode.Border}, Logo)
 
 mk("TextLabel", {
-    Size=UDim2.fromOffset(200,16), Position=UDim2.fromOffset(50,8),
+    Size=UDim2.fromOffset(220,18), Position=UDim2.fromOffset(64,12),
     BackgroundTransparency=1, Text="FXA CANNON",
-    TextColor3=T.Text, Font=Enum.Font.GothamBold, TextSize=13,
+    TextColor3=T.TextHi, Font=Enum.Font.GothamBlack, TextSize=15,
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=11,
 }, TopBar)
 mk("TextLabel", {
-    Size=UDim2.fromOffset(200,11), Position=UDim2.fromOffset(50,24),
-    BackgroundTransparency=1, Text="STK · v4.1",
-    TextColor3=T.Accent, Font=Enum.Font.GothamMedium, TextSize=9,
+    Size=UDim2.fromOffset(220,12), Position=UDim2.fromOffset(64,31),
+    BackgroundTransparency=1, Text="SURVIVE THE KILLER · PREMIUM",
+    TextColor3=T.Accent, Font=Enum.Font.GothamBold, TextSize=8,
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=11,
 }, TopBar)
 
--- ═══════════════════════════════════════════════════════════
--- CLOSE + MIN — bound via InputBegan on the button itself.
--- This fires regardless of Active state, ZIndex, or parent chain.
--- ═══════════════════════════════════════════════════════════
+-- Live killer / time readouts (top-right area)
+local killerLbl = mk("TextLabel", {
+    Size=UDim2.fromOffset(140,14), Position=UDim2.new(1,-155,0,14),
+    BackgroundTransparency=1, Text="KILLER  —",
+    TextColor3=T.Accent, Font=Enum.Font.GothamBold, TextSize=9,
+    TextXAlignment=Enum.TextXAlignment.Right, ZIndex=11,
+}, TopBar)
+local timeLbl = mk("TextLabel", {
+    Size=UDim2.fromOffset(140,14), Position=UDim2.new(1,-155,0,30),
+    BackgroundTransparency=1, Text="⏱  --:--",
+    TextColor3=T.TextDim, Font=Enum.Font.GothamMedium, TextSize=9,
+    TextXAlignment=Enum.TextXAlignment.Right, ZIndex=11,
+}, TopBar)
+
+-- Close / Minimize
 local CloseBtn = mk("TextButton", {
-    Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-32,0,11),
-    BackgroundColor3=Color3.fromRGB(60,20,24),
-    Text="×", TextColor3=T.Text,
-    Font=Enum.Font.GothamBold, TextSize=15,
+    Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-34,0,18),
+    BackgroundColor3=Color3.fromRGB(70,22,26),
+    Text="×", TextColor3=T.TextHi,
+    Font=Enum.Font.GothamBlack, TextSize=15,
     BorderSizePixel=0, ZIndex=200, AutoButtonColor=false,
     Active=true, Selectable=true,
 }, TopBar)
@@ -656,40 +680,50 @@ corner(CloseBtn, UDim.new(0,7))
 stroke(CloseBtn, T.Accent, 1)
 
 local MinBtn = mk("TextButton", {
-    Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-62,0,11),
-    BackgroundColor3=T.PanelLight,
-    Text="—", TextColor3=T.Text,
-    Font=Enum.Font.GothamBold, TextSize=14,
+    Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-66,0,18),
+    BackgroundColor3=T.PanelAlt,
+    Text="—", TextColor3=T.TextHi,
+    Font=Enum.Font.GothamBlack, TextSize=14,
     BorderSizePixel=0, ZIndex=200, AutoButtonColor=false,
     Active=true, Selectable=true,
 }, TopBar)
 corner(MinBtn, UDim.new(0,7))
+stroke(MinBtn, T.Border, 1)
 
--- Sidebar
-local SIDEBAR_W = 96
+-- Divider under top bar
+local topDiv = mk("Frame", {
+    Size=UDim2.new(1,-20,0,1), Position=UDim2.fromOffset(10,62),
+    BackgroundColor3=T.Border, BackgroundTransparency=0.4,
+    BorderSizePixel=0, ZIndex=9,
+}, Main)
+
+-- ═══════════════════════════════════════════════════════════
+-- SIDEBAR
+-- ═══════════════════════════════════════════════════════════
+local SIDEBAR_W = 108
 local Sidebar = mk("Frame", {
-    Size=UDim2.new(0,SIDEBAR_W,1,-58), Position=UDim2.fromOffset(10,52),
-    BackgroundColor3=T.Panel, BackgroundTransparency=0.2,
+    Size=UDim2.new(0,SIDEBAR_W,1,-72), Position=UDim2.fromOffset(10,70),
+    BackgroundColor3=T.Panel, BackgroundTransparency=0.15,
     BorderSizePixel=0, ZIndex=10,
 }, Main)
-corner(Sidebar, UDim.new(0,9)); pad(Sidebar, 5)
-mk("UIListLayout", {Padding=UDim.new(0,3), SortOrder=Enum.SortOrder.LayoutOrder}, Sidebar)
+corner(Sidebar, UDim.new(0,10)); pad(Sidebar, 6)
+mk("UIListLayout", {Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder}, Sidebar)
 
 -- Content
 local Content = mk("ScrollingFrame", {
-    Size=UDim2.new(1, -(SIDEBAR_W + 10 + 6 + 10), 1, -58),
-    Position=UDim2.fromOffset(10 + SIDEBAR_W + 6, 52),
-    BackgroundColor3=T.Panel, BackgroundTransparency=0.2,
+    Size=UDim2.new(1, -(SIDEBAR_W + 10 + 6 + 10), 1, -72),
+    Position=UDim2.fromOffset(10 + SIDEBAR_W + 6, 70),
+    BackgroundColor3=T.Panel, BackgroundTransparency=0.15,
     BorderSizePixel=0, ScrollBarThickness=3, ScrollBarImageColor3=T.Accent,
     CanvasSize=UDim2.new(0,0,0,0),
     AutomaticCanvasSize=Enum.AutomaticSize.Y,
     ScrollingDirection=Enum.ScrollingDirection.Y,
     ZIndex=10, ClipsDescendants=true,
 }, Main)
-corner(Content, UDim.new(0,9)); pad(Content, 6)
-mk("UIListLayout", {Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder}, Content)
+corner(Content, UDim.new(0,10)); pad(Content, 8)
+mk("UIListLayout", {Padding=UDim.new(0,6), SortOrder=Enum.SortOrder.LayoutOrder}, Content)
 
--- Drag on topbar
+-- Drag
 do
     local dragging, dragStart, startPos
     track(TopBar.InputBegan:Connect(function(input)
@@ -717,117 +751,153 @@ end
 
 local function createTabButton(title, key)
     local btn = mk("TextButton", {
-        Size=UDim2.new(1,0,0,24),
-        BackgroundColor3=T.PanelLight, BackgroundTransparency=0.3,
-        Text=" "..title, TextColor3=T.Text,
-        Font=Enum.Font.GothamMedium, TextSize=10,
+        Size=UDim2.new(1,0,0,30),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.35,
+        Text="   "..title, TextColor3=T.Text,
+        Font=Enum.Font.GothamMedium, TextSize=11,
         TextXAlignment=Enum.TextXAlignment.Left,
         BorderSizePixel=0, AutoButtonColor=false,
     }, Sidebar)
-    corner(btn, UDim.new(0,6))
+    corner(btn, UDim.new(0,7))
     local accent = mk("Frame", {
         Size=UDim2.new(0,3,0,0), Position=UDim2.new(0,0,0.5,0),
         BackgroundColor3=T.Accent, BorderSizePixel=0,
     }, btn)
     corner(accent, UDim.new(1,0))
-    -- ═══ THE SCROLL FIX — AutomaticSize on the page ═══
+
     local page = mk("Frame", {
         Name=key, Size=UDim2.new(1,0,0,0),
         AutomaticSize=Enum.AutomaticSize.Y,
         BackgroundTransparency=1, Visible=false,
     }, Content)
-    mk("UIListLayout", {Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder}, page)
+    mk("UIListLayout", {Padding=UDim.new(0,6), SortOrder=Enum.SortOrder.LayoutOrder}, page)
     tabs[key]=page
-    btn.MouseEnter:Connect(function() btn.BackgroundTransparency=0.05 end)
-    btn.MouseLeave:Connect(function() if currentTab~=key then btn.BackgroundTransparency=0.3 end end)
+
+    btn.MouseEnter:Connect(function() btn.BackgroundTransparency=0.1 end)
+    btn.MouseLeave:Connect(function() if currentTab~=key then btn.BackgroundTransparency=0.35 end end)
     btn.MouseButton1Click:Connect(function()
         for _,b in ipairs(Sidebar:GetChildren()) do
             if b:IsA("TextButton") then
-                b.BackgroundTransparency=0.3; b.TextColor3=T.Text
+                b.BackgroundTransparency=0.35; b.TextColor3=T.Text
                 local a = b:FindFirstChildOfClass("Frame")
                 if a then TweenService:Create(a, TweenInfo.new(0.15), {Size=UDim2.new(0,3,0,0)}):Play() end
             end
         end
-        btn.BackgroundTransparency=0.05; btn.TextColor3=T.Accent
-        TweenService:Create(accent, TweenInfo.new(0.15), {Size=UDim2.new(0,3,0,14)}):Play()
+        btn.BackgroundTransparency=0.1; btn.TextColor3=T.Accent
+        TweenService:Create(accent, TweenInfo.new(0.15), {Size=UDim2.new(0,3,0,18)}):Play()
         switchTab(key)
     end)
     return page
 end
 
+-- Premium section header with accent underline
 local function sectionHeader(parent, title)
-    return mk("TextLabel", {
-        Size=UDim2.new(1,0,0,14), BackgroundTransparency=1, Text=title:upper(),
-        TextColor3=T.Accent, Font=Enum.Font.GothamBold, TextSize=9,
-        TextXAlignment=Enum.TextXAlignment.Left,
+    local holder = mk("Frame", {
+        Size=UDim2.new(1,0,0,22),
+        BackgroundTransparency=1,
     }, parent)
+    mk("TextLabel", {
+        Size=UDim2.new(1,0,0,14), Position=UDim2.fromOffset(0,0),
+        BackgroundTransparency=1, Text=title:upper(),
+        TextColor3=T.Accent, Font=Enum.Font.GothamBlack, TextSize=9,
+        TextXAlignment=Enum.TextXAlignment.Left,
+    }, holder)
+    mk("Frame", {
+        Size=UDim2.new(0,24,0,2), Position=UDim2.fromOffset(0,18),
+        BackgroundColor3=T.Accent, BorderSizePixel=0,
+    }, holder)
+    mk("Frame", {
+        Size=UDim2.new(1,-30,0,1), Position=UDim2.fromOffset(30,19),
+        BackgroundColor3=T.Border, BackgroundTransparency=0.5,
+        BorderSizePixel=0,
+    }, holder)
+    return holder
 end
 
+-- Premium toggle row — status pill on the left
 local function toggle(parent, title, desc, default, cb)
     local row = mk("Frame", {
-        Size=UDim2.new(1,0,0, desc and 34 or 26),
-        BackgroundColor3=T.PanelLight, BackgroundTransparency=0.35, BorderSizePixel=0,
+        Size=UDim2.new(1,0,0, desc and 40 or 30),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.25, BorderSizePixel=0,
     }, parent)
-    corner(row, UDim.new(0,7)); pad(row, 8)
+    corner(row, UDim.new(0,8)); pad(row, 10)
+
+    -- left accent bar (lights up when on)
+    local bar = mk("Frame", {
+        Size=UDim2.new(0,3,1,-12), Position=UDim2.fromOffset(0,6),
+        BackgroundColor3=T.Border, BorderSizePixel=0, ZIndex=2,
+    }, row)
+    corner(bar, UDim.new(1,0))
+
     mk("TextLabel", {
-        Size=UDim2.new(1,-40,0, desc and 13 or 26),
+        Size=UDim2.new(1,-50,0, desc and 14 or 30),
+        Position=UDim2.fromOffset(12,0),
         BackgroundTransparency=1, Text=title, TextColor3=T.Text,
-        Font=Enum.Font.GothamMedium, TextSize=10,
+        Font=Enum.Font.GothamMedium, TextSize=11,
         TextXAlignment=Enum.TextXAlignment.Left,
         TextYAlignment= desc and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
     }, row)
     if desc then
         mk("TextLabel", {
-            Size=UDim2.new(1,-40,0,10), Position=UDim2.fromOffset(0,13),
+            Size=UDim2.new(1,-50,0,11), Position=UDim2.fromOffset(12,14),
             BackgroundTransparency=1, Text=desc, TextColor3=T.TextDim,
-            Font=Enum.Font.Gotham, TextSize=8,
+            Font=Enum.Font.Gotham, TextSize=9,
             TextXAlignment=Enum.TextXAlignment.Left,
         }, row)
     end
+
     local st = default or false
     local sw = mk("TextButton", {
-        Size=UDim2.fromOffset(30,15), Position=UDim2.new(1,-30,0.5,-7.5),
+        Size=UDim2.fromOffset(32,16), Position=UDim2.new(1,-32,0.5,-8),
         BackgroundColor3=st and T.Accent or T.Border, Text="",
         BorderSizePixel=0, AutoButtonColor=false,
     }, row)
     corner(sw, UDim.new(0.5,0))
     local knob = mk("Frame", {
-        Size=UDim2.fromOffset(11,11),
-        Position=st and UDim2.new(1,-13,0.5,-5.5) or UDim2.new(0,2,0.5,-5.5),
+        Size=UDim2.fromOffset(12,12),
+        Position=st and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6),
         BackgroundColor3=Color3.new(1,1,1), BorderSizePixel=0,
     }, sw)
     corner(knob, UDim.new(1,0))
-    row.MouseEnter:Connect(function() row.BackgroundTransparency=0.15 end)
-    row.MouseLeave:Connect(function() row.BackgroundTransparency=0.35 end)
+
+    if st then bar.BackgroundColor3 = T.Accent end
+
+    row.MouseEnter:Connect(function() row.BackgroundTransparency=0.05 end)
+    row.MouseLeave:Connect(function() row.BackgroundTransparency=0.25 end)
     sw.MouseButton1Click:Connect(function()
         st = not st
-        if st then sw.BackgroundColor3=T.Accent
-            TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(1,-13,0.5,-5.5)}):Play()
-        else sw.BackgroundColor3=T.Border
-            TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(0,2,0.5,-5.5)}):Play() end
+        if st then
+            sw.BackgroundColor3=T.Accent
+            bar.BackgroundColor3=T.Accent
+            TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(1,-14,0.5,-6)}):Play()
+        else
+            sw.BackgroundColor3=T.Border
+            bar.BackgroundColor3=T.Border
+            TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(0,2,0.5,-6)}):Play()
+        end
         if cb then pcall(cb, st) end
     end)
 end
 
 local function slider(parent, title, min, max, default, cb)
     local row = mk("Frame", {
-        Size=UDim2.new(1,0,0,36),
-        BackgroundColor3=T.PanelLight, BackgroundTransparency=0.35, BorderSizePixel=0,
+        Size=UDim2.new(1,0,0,42),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.25, BorderSizePixel=0,
     }, parent)
-    corner(row, UDim.new(0,7)); pad(row, 8)
+    corner(row, UDim.new(0,8)); pad(row, 10)
     mk("TextLabel", {
-        Size=UDim2.new(1,-50,0,11), BackgroundTransparency=1, Text=title,
-        TextColor3=T.Text, Font=Enum.Font.GothamMedium, TextSize=10,
+        Size=UDim2.new(1,-60,0,13), BackgroundTransparency=1, Text=title,
+        TextColor3=T.Text, Font=Enum.Font.GothamMedium, TextSize=11,
         TextXAlignment=Enum.TextXAlignment.Left,
     }, row)
     local vl = mk("TextLabel", {
-        Size=UDim2.fromOffset(50,11), Position=UDim2.new(1,-50,0,0),
+        Size=UDim2.fromOffset(60,13), Position=UDim2.new(1,-60,0,0),
         BackgroundTransparency=1, Text=tostring(default),
-        TextColor3=T.Accent, Font=Enum.Font.GothamBold, TextSize=10,
+        TextColor3=T.Accent, Font=Enum.Font.GothamBlack, TextSize=11,
         TextXAlignment=Enum.TextXAlignment.Right,
     }, row)
     local track = mk("Frame", {
-        Size=UDim2.new(1,0,0,4), Position=UDim2.fromOffset(0,21),
+        Size=UDim2.new(1,0,0,4), Position=UDim2.fromOffset(0,26),
         BackgroundColor3=T.Border, BorderSizePixel=0,
     }, row)
     corner(track, UDim.new(1,0))
@@ -837,8 +907,8 @@ local function slider(parent, title, min, max, default, cb)
     }, track)
     corner(fill, UDim.new(1,0))
     local knob = mk("Frame", {
-        Size=UDim2.fromOffset(10,10),
-        Position=UDim2.new((default-min)/(max-min),-5,0.5,-5),
+        Size=UDim2.fromOffset(11,11),
+        Position=UDim2.new((default-min)/(max-min),-5.5,0.5,-5.5),
         BackgroundColor3=Color3.new(1,1,1), BorderSizePixel=0, ZIndex=2,
     }, track)
     corner(knob, UDim.new(1,0))
@@ -847,7 +917,7 @@ local function slider(parent, title, min, max, default, cb)
         local r = math.clamp((input.Position.X - track.AbsolutePosition.X)/track.AbsoluteSize.X, 0, 1)
         local v = math.floor(min + (max-min)*r + 0.5)
         fill.Size = UDim2.new(r,0,1,0)
-        knob.Position = UDim2.new(r,-5,0.5,-5)
+        knob.Position = UDim2.new(r,-5.5,0.5,-5.5)
         vl.Text = tostring(v)
         if cb then pcall(cb, v) end
     end
@@ -866,40 +936,50 @@ end
 
 local function button(parent, title, desc, cb)
     local row = mk("TextButton", {
-        Size=UDim2.new(1,0,0, desc and 34 or 26),
-        BackgroundColor3=T.PanelLight, BackgroundTransparency=0.35,
+        Size=UDim2.new(1,0,0, desc and 40 or 30),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.25,
         Text="", BorderSizePixel=0, AutoButtonColor=false,
     }, parent)
-    corner(row, UDim.new(0,7)); pad(row, 8)
+    corner(row, UDim.new(0,8)); pad(row, 10)
+    -- left accent bar (static)
+    local bar = mk("Frame", {
+        Size=UDim2.new(0,3,1,-12), Position=UDim2.fromOffset(0,6),
+        BackgroundColor3=T.AccentDim, BorderSizePixel=0, ZIndex=2,
+    }, row)
+    corner(bar, UDim.new(1,0))
+
     mk("TextLabel", {
-        Size=UDim2.new(1,0,0, desc and 13 or 26),
+        Size=UDim2.new(1,0,0, desc and 14 or 30),
+        Position=UDim2.fromOffset(12,0),
         BackgroundTransparency=1, Text=title, TextColor3=T.Text,
-        Font=Enum.Font.GothamMedium, TextSize=10,
+        Font=Enum.Font.GothamMedium, TextSize=11,
         TextXAlignment=Enum.TextXAlignment.Left,
         TextYAlignment= desc and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
     }, row)
     if desc then
         mk("TextLabel", {
-            Size=UDim2.new(1,0,0,10), Position=UDim2.fromOffset(0,13),
+            Size=UDim2.new(1,0,0,11), Position=UDim2.fromOffset(12,14),
             BackgroundTransparency=1, Text=desc, TextColor3=T.TextDim,
-            Font=Enum.Font.Gotham, TextSize=8,
+            Font=Enum.Font.Gotham, TextSize=9,
             TextXAlignment=Enum.TextXAlignment.Left,
         }, row)
     end
-    row.MouseEnter:Connect(function() row.BackgroundTransparency=0.15 end)
-    row.MouseLeave:Connect(function() row.BackgroundTransparency=0.35 end)
+    row.MouseEnter:Connect(function() row.BackgroundTransparency=0.05 end)
+    row.MouseLeave:Connect(function() row.BackgroundTransparency=0.25 end)
     row.MouseButton1Click:Connect(function()
+        bar.BackgroundColor3 = T.Accent
+        task.delay(0.2, function() if bar then bar.BackgroundColor3 = T.AccentDim end end)
         if cb then pcall(cb) end
     end)
 end
 
 -- Notifications
 local notifHolder = mk("Frame", {
-    Size=UDim2.fromOffset(200,240), Position=UDim2.new(1,-216,1,-260),
+    Size=UDim2.fromOffset(220,260), Position=UDim2.new(1,-236,1,-280),
     BackgroundTransparency=1, ZIndex=100,
 }, gui)
 mk("UIListLayout", {
-    Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder,
+    Padding=UDim.new(0,5), SortOrder=Enum.SortOrder.LayoutOrder,
     VerticalAlignment=Enum.VerticalAlignment.Bottom,
     HorizontalAlignment=Enum.HorizontalAlignment.Right,
 }, notifHolder)
@@ -907,25 +987,25 @@ mk("UIListLayout", {
 local function notify(title, text, kind)
     local color = kind=="error" and T.Accent or kind=="success" and T.Success or T.Info
     local h = mk("Frame", {
-        Size=UDim2.fromOffset(190,40),
-        BackgroundColor3=T.Panel, BackgroundTransparency=0.05,
+        Size=UDim2.fromOffset(210,46),
+        BackgroundColor3=T.Panel, BackgroundTransparency=0.03,
         BorderSizePixel=0, ZIndex=101,
     }, notifHolder)
-    corner(h, UDim.new(0,8)); stroke(h, color, 1.5)
+    corner(h, UDim.new(0,10)); stroke(h, color, 1.5)
     mk("Frame", {
-        Size=UDim2.new(0,3,1,-12), Position=UDim2.fromOffset(5,6),
+        Size=UDim2.new(0,3,1,-14), Position=UDim2.fromOffset(6,7),
         BackgroundColor3=color, BorderSizePixel=0,
     }, h)
     mk("TextLabel", {
-        Size=UDim2.new(1,-16,0,12), Position=UDim2.fromOffset(12,5),
+        Size=UDim2.new(1,-18,0,13), Position=UDim2.fromOffset(14,6),
         BackgroundTransparency=1, Text=title, TextColor3=color,
-        Font=Enum.Font.GothamBold, TextSize=10,
+        Font=Enum.Font.GothamBlack, TextSize=10,
         TextXAlignment=Enum.TextXAlignment.Left,
     }, h)
     mk("TextLabel", {
-        Size=UDim2.new(1,-16,0,18), Position=UDim2.fromOffset(12,18),
+        Size=UDim2.new(1,-18,0,20), Position=UDim2.fromOffset(14,21),
         BackgroundTransparency=1, Text=text, TextColor3=T.TextDim,
-        Font=Enum.Font.Gotham, TextSize=8,
+        Font=Enum.Font.Gotham, TextSize=9,
         TextXAlignment=Enum.TextXAlignment.Left, TextWrapped=true,
     }, h)
     h.Position = UDim2.new(1,300,0,0)
@@ -937,80 +1017,87 @@ local function notify(title, text, kind)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- BUILD TABS
+-- TAB: MAIN
 -- ═══════════════════════════════════════════════════════════
-
--- MAIN
 local MainPage = createTabButton("Main", "main")
+
 sectionHeader(MainPage, "Killer")
-toggle(MainPage, "Auto Become Killer", "Roulette + LoadPropKiller", false, function(v)
+toggle(MainPage, "Auto Become Killer", "Burst-fires StartRoulette + LoadPropKiller", false, function(v)
     State.AutoBecomeKiller = v
-    if v then notify("Auto Killer","Burst-firing.","info") end
+    if v then notify("Auto Killer","Burst-firing role remotes.","info") end
 end)
-toggle(MainPage, "Auto Kill", "Knife.OnHit at nearest", false, function(v)
+toggle(MainPage, "Auto Kill", "Fires live Knife.OnHit at nearest survivor", false, function(v)
     State.AutoKill = v
-    if v then notify("Auto Kill","Active as killer.","info") end
+    if v then notify("Auto Kill","Active when you're killer.","info") end
 end)
 button(MainPage, "Force Kill Nearest (once)", nil, function()
     local t = nearestSurvivor()
-    if t then fireKillOn(t); notify("Kill","Fired.","success")
-    else notify("Kill","No target.","error") end
+    if t then fireKillOn(t); notify("Kill","Fired on nearest.","success")
+    else notify("Kill","No survivor in range.","error") end
 end)
 
 sectionHeader(MainPage, "Escape")
-toggle(MainPage, "Auto Escape", "TP to front when open", false, function(v)
+toggle(MainPage, "Auto Escape", "Waits for door open, TP in front, fire", false, function(v)
     State.AutoEscape = v
-    if v then notify("Escape","Watching door.","info") end
+    if v then notify("Auto Escape","Watching door state.","info") end
 end)
-button(MainPage, "TP to Exit Front (once)", nil, function()
+button(MainPage, "Teleport to Exit Front (once)", nil, function()
     local d = findExitDoor(); local myHrp = hrp()
     if d and myHrp then
         local look = d.CFrame.LookVector
         local f = d.Position - look * CONFIG.ExitFrontOffset
         myHrp.CFrame = CFrame.new(f, f + look)
-        notify("Escape","TP'd.","success")
-    else notify("Escape","No exit.","error") end
+        notify("Escape","TP'd to front of door.","success")
+    else notify("Escape","No exit found.","error") end
 end)
 
 sectionHeader(MainPage, "Survival")
-toggle(MainPage, "Auto Break Free", "Anti-grab", true, function(v) State.AutoBreakFree=v end)
-toggle(MainPage, "Auto Save Player", "TP + revive downed", false, function(v)
-    State.AutoSavePlayer=v
-    if v then notify("Save","Active.","info") end
+toggle(MainPage, "Auto Break Free", "Anti-grab — fires BreakFree when grabbed", true, function(v)
+    State.AutoBreakFree = v
+    if v then notify("Anti-Grab","Enabled.","success") end
 end)
-button(MainPage, "Save Nearest Downed", nil, function()
+toggle(MainPage, "Auto Save Player", "TP to downed + fire revive prompt", false, function(v)
+    State.AutoSavePlayer = v
+    if v then notify("Auto Save","Active.","info") end
+end)
+button(MainPage, "Save Nearest Downed (once)", nil, function()
     local t = nearestDowned(); local myHrp = hrp()
     if t and myHrp then
         myHrp.CFrame = CFrame.new(t.Position + Vector3.new(0,3,0))
         task.wait(0.1); tryRevive(t)
-        notify("Save","Attempted.","success")
-    else notify("Save","No downed.","error") end
+        notify("Save","Attempted revive.","success")
+    else notify("Save","No downed player.","error") end
 end)
 
--- ESP
+-- ═══════════════════════════════════════════════════════════
+-- TAB: ESP
+-- ═══════════════════════════════════════════════════════════
 local ESPPage = createTabButton("ESP", "esp")
-sectionHeader(ESPPage, "Players")
-toggle(ESPPage, "Survivor (Blue)", nil, false, function(v) State.ESP_Survivor=v end)
-toggle(ESPPage, "Killer (Red)", nil, false, function(v) State.ESP_Killer=v end)
-toggle(ESPPage, "Downed (Gold)", nil, false, function(v) State.ESP_Downed=v end)
-toggle(ESPPage, "Distance + Role", nil, true, function(v) State.ESP_Distance=v end)
-sectionHeader(ESPPage, "Objects")
-toggle(ESPPage, "Locker ESP", nil, false, function(v) State.ESP_Lockers=v end)
+sectionHeader(ESPPage, "Player ESP")
+toggle(ESPPage, "Survivor ESP (Blue)", nil, false, function(v) State.ESP_Survivor=v end)
+toggle(ESPPage, "Killer ESP (Red)", nil, false, function(v) State.ESP_Killer=v end)
+toggle(ESPPage, "Downed ESP (Gold)", nil, false, function(v) State.ESP_Downed=v end)
+toggle(ESPPage, "Distance + Role Tag", "Shows role & meters under name", true, function(v) State.ESP_Distance=v end)
+
+sectionHeader(ESPPage, "Object ESP")
+toggle(ESPPage, "Locker ESP", "Red = occupied", false, function(v) State.ESP_Lockers=v end)
 toggle(ESPPage, "Trap ESP", nil, false, function(v) State.ESP_Traps=v end)
 toggle(ESPPage, "Exit ESP", nil, false, function(v) State.ESP_Exits=v end)
 
--- MOVE
+-- ═══════════════════════════════════════════════════════════
+-- TAB: MOVE
+-- ═══════════════════════════════════════════════════════════
 local MovePage = createTabButton("Move", "move")
 sectionHeader(MovePage, "Character")
 slider(MovePage, "Walk Speed", 16, 250, 16, function(v) State.Speed=v end)
 slider(MovePage, "Jump Power", 50, 400, 50, function(v) State.Jump=v end)
-toggle(MovePage, "Noclip", nil, false, function(v) State.Noclip=v end)
-toggle(MovePage, "Godmode", "Health + strip touch", false, function(v)
+toggle(MovePage, "Noclip", "Walk through walls", false, function(v) State.Noclip=v end)
+toggle(MovePage, "Godmode", "Health lock + strip TouchTransmitter", false, function(v)
     State.Godmode=v
     if v then notify("Godmode","Active.","success") end
 end)
 toggle(MovePage, "Infinite Stamina", nil, false, function(v) State.InfiniteStamina=v end)
-toggle(MovePage, "Anti-AFK", nil, false, function(v)
+toggle(MovePage, "Anti-AFK", "Prevents idle kick", false, function(v)
     State.AntiAFK=v
     if v then
         track(LocalPlayer.Idled:Connect(function()
@@ -1019,17 +1106,19 @@ toggle(MovePage, "Anti-AFK", nil, false, function(v)
     end
 end)
 
--- PLAYERS
+-- ═══════════════════════════════════════════════════════════
+-- TAB: PLAYERS
+-- ═══════════════════════════════════════════════════════════
 local PlayerPage = createTabButton("Players", "players")
 sectionHeader(PlayerPage, "Click to TP")
 
 local playerListHolder = mk("Frame", {
     Size=UDim2.new(1,0,0,0),
     AutomaticSize=Enum.AutomaticSize.Y,
-    BackgroundColor3=T.PanelLight, BackgroundTransparency=0.5,
+    BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.4,
     BorderSizePixel=0,
 }, PlayerPage)
-corner(playerListHolder, UDim.new(0,7)); pad(playerListHolder, 4)
+corner(playerListHolder, UDim.new(0,8)); pad(playerListHolder, 5)
 mk("UIListLayout", {Padding=UDim.new(0,3), SortOrder=Enum.SortOrder.LayoutOrder}, playerListHolder)
 
 local function refreshPlayerList()
@@ -1045,31 +1134,35 @@ local function refreshPlayerList()
                           or downed and Color3.fromRGB(255,200,0)
                           or Color3.fromRGB(70,160,255)
             local b = mk("TextButton", {
-                Size=UDim2.new(1,0,0,20),
-                BackgroundColor3=T.Panel, BackgroundTransparency=0.3,
+                Size=UDim2.new(1,0,0,22),
+                BackgroundColor3=T.Panel, BackgroundTransparency=0.25,
                 Text="", BorderSizePixel=0, AutoButtonColor=false,
             }, playerListHolder)
-            corner(b, UDim.new(0,5))
+            corner(b, UDim.new(0,6))
+            mk("Frame", {
+                Size=UDim2.new(0,3,0.7,0), Position=UDim2.fromOffset(5,0.15),
+                BackgroundColor3=roleColor, BorderSizePixel=0,
+            }, b)
             mk("TextLabel", {
-                Size=UDim2.new(0.6,0,1,0), Position=UDim2.fromOffset(6,0),
+                Size=UDim2.new(0.6,0,1,0), Position=UDim2.fromOffset(14,0),
                 BackgroundTransparency=1, Text=plr.Name,
                 TextColor3=T.Text, Font=Enum.Font.GothamMedium,
-                TextSize=9, TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=10, TextXAlignment=Enum.TextXAlignment.Left,
             }, b)
             mk("TextLabel", {
-                Size=UDim2.new(0.4,-6,1,0), Position=UDim2.new(0.6,0,0,0),
+                Size=UDim2.new(0.4,-10,1,0), Position=UDim2.new(0.6,0,0,0),
                 BackgroundTransparency=1, Text=role,
                 TextColor3=roleColor, Font=Enum.Font.GothamBold,
-                TextSize=8, TextXAlignment=Enum.TextXAlignment.Right,
+                TextSize=9, TextXAlignment=Enum.TextXAlignment.Right,
             }, b)
-            b.MouseEnter:Connect(function() b.BackgroundTransparency=0.1 end)
-            b.MouseLeave:Connect(function() b.BackgroundTransparency=0.3 end)
+            b.MouseEnter:Connect(function() b.BackgroundTransparency=0.05 end)
+            b.MouseLeave:Connect(function() b.BackgroundTransparency=0.25 end)
             b.MouseButton1Click:Connect(function()
                 local t = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
                 local myHrp = hrp()
                 if t and myHrp then
                     myHrp.CFrame = CFrame.new(t.Position + Vector3.new(0,3,0))
-                    notify("TP","→ "..plr.Name,"success")
+                    notify("Teleport","TP'd to "..plr.Name,"success")
                 end
             end)
         end
@@ -1079,31 +1172,33 @@ refreshPlayerList()
 track(Players.PlayerAdded:Connect(function() task.wait(0.5) refreshPlayerList() end))
 track(Players.PlayerRemoving:Connect(function() task.wait(0.5) refreshPlayerList() end))
 
-sectionHeader(PlayerPage, "Auto")
-toggle(PlayerPage, "Auto TP to Downed", nil, false, function(v) State.TPOnDowned=v end)
+sectionHeader(PlayerPage, "Downed")
+toggle(PlayerPage, "Auto TP to Downed", "Continuously TP to nearest knocked", false, function(v) State.TPOnDowned=v end)
 
--- MY SELF
+-- ═══════════════════════════════════════════════════════════
+-- TAB: MY SELF
+-- ═══════════════════════════════════════════════════════════
 local SelfPage = createTabButton("My Self", "self")
 sectionHeader(SelfPage, "Live Dashboard")
 
 local function dataRow(parent, label)
     local row = mk("Frame", {
-        Size=UDim2.new(1,0,0,20),
-        BackgroundColor3=T.PanelLight, BackgroundTransparency=0.4,
+        Size=UDim2.new(1,0,0,22),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.3,
         BorderSizePixel=0,
     }, parent)
-    corner(row, UDim.new(0,5)); pad(row, 7)
+    corner(row, UDim.new(0,6)); pad(row, 8)
     local lb = mk("TextLabel", {
         Size=UDim2.new(0.45,0,1,0),
         BackgroundTransparency=1, Text=label,
         TextColor3=T.TextDim, Font=Enum.Font.GothamMedium,
-        TextSize=9, TextXAlignment=Enum.TextXAlignment.Left,
+        TextSize=10, TextXAlignment=Enum.TextXAlignment.Left,
     }, row)
     local v = mk("TextLabel", {
         Size=UDim2.new(0.55,0,1,0), Position=UDim2.new(0.45,0,0,0),
         BackgroundTransparency=1, Text="—",
         TextColor3=T.Text, Font=Enum.Font.Code,
-        TextSize=9, TextXAlignment=Enum.TextXAlignment.Right,
+        TextSize=10, TextXAlignment=Enum.TextXAlignment.Right,
     }, row)
     return row, v, label
 end
@@ -1227,8 +1322,8 @@ add("Executor", function()
     return (identifyexecutor and select(1, identifyexecutor())) or "—"
 end)
 
-button(SelfPage, "Copy Dashboard", nil, function()
-    local buf = {"── FXA · MY SELF ──"}
+button(SelfPage, "Copy Dashboard", "Full snapshot to clipboard", function()
+    local buf = {"── FXA CANNON · MY SELF ──"}
     for _, e in ipairs(R) do
         table.insert(buf, e.label..": "..e.val.Text)
     end
@@ -1238,7 +1333,7 @@ button(SelfPage, "Copy Dashboard", nil, function()
     end
 end)
 
-trackLoop(task.spawn(function()
+task.spawn(function()
     while true do
         for _, e in ipairs(R) do
             if e.val and e.val.Parent then
@@ -1248,11 +1343,14 @@ trackLoop(task.spawn(function()
         end
         task.wait(0.5)
     end
-end))
+end)
 
--- REMOTES
+-- ═══════════════════════════════════════════════════════════
+-- TAB: REMOTES
+-- ═══════════════════════════════════════════════════════════
 local RemotePage = createTabButton("Remotes", "remotes")
-sectionHeader(RemotePage, "Bound")
+sectionHeader(RemotePage, "Bound Remotes")
+
 local boundList = {
     {"StartRoulette", Remotes.StartRoulette},
     {"Preload", Remotes.Preload},
@@ -1267,14 +1365,14 @@ local boundList = {
 for _, pair in ipairs(boundList) do
     local name, rem = pair[1], pair[2]
     local row = mk("Frame", {
-        Size=UDim2.new(1,0,0,18),
-        BackgroundColor3=T.PanelLight, BackgroundTransparency=0.4,
+        Size=UDim2.new(1,0,0,20),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.35,
         BorderSizePixel=0,
     }, RemotePage)
-    corner(row, UDim.new(0,5)); pad(row, 7)
+    corner(row, UDim.new(0,5)); pad(row, 8)
     mk("TextLabel", {
         Size=UDim2.new(0.5,0,1,0), BackgroundTransparency=1, Text=name,
-        TextColor3=T.Text, Font=Enum.Font.Code, TextSize=8,
+        TextColor3=T.Text, Font=Enum.Font.Code, TextSize=9,
         TextXAlignment=Enum.TextXAlignment.Left,
     }, row)
     local status = rem and "BOUND" or "MISSING"
@@ -1282,7 +1380,7 @@ for _, pair in ipairs(boundList) do
     local sbtn = mk("TextButton", {
         Size=UDim2.new(0.5,0,1,0), Position=UDim2.new(0.5,0,0,0),
         BackgroundTransparency=1, Text=status,
-        TextColor3=statusColor, Font=Enum.Font.GothamBold, TextSize=8,
+        TextColor3=statusColor, Font=Enum.Font.GothamBold, TextSize=9,
         TextXAlignment=Enum.TextXAlignment.Right, AutoButtonColor=false,
     }, row)
     sbtn.MouseButton1Click:Connect(function()
@@ -1311,12 +1409,25 @@ button(RemotePage, "Scan All Remotes", "Lists in console + clipboard", function(
     end
 end)
 
-button(RemotePage, "Show Current Knife", nil, function()
+button(RemotePage, "Show Current Knife", "Copy live knife path", function()
     local k = getMyKnife()
     if k then
         if setclipboard then setclipboard(k:GetFullName()) end
         notify("Knife", k:GetFullName(), "info")
-    else notify("Knife","Not holding.","error") end
+    else notify("Knife","Not holding one.","error") end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- LIVE HEADER READOUT — killer + time left in top bar
+-- ═══════════════════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        local k = getKillerName()
+        killerLbl.Text = "KILLER  " .. (k == "—" and "—" or k:upper())
+        local t = getTimeLeft()
+        timeLbl.Text = "⏱  " .. (t and fmtTime(t) or "--:--")
+        task.wait(0.5)
+    end
 end)
 
 -- ═══════════════════════════════════════════════════════════
@@ -1341,7 +1452,6 @@ local function shutdown()
     pcall(function() gui:Destroy() end)
 end
 
--- ═══ CLOSE: bind InputBegan directly on the button — cannot be blocked ═══
 CloseBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
        or input.UserInputType == Enum.UserInputType.Touch then
@@ -1355,11 +1465,11 @@ MinBtn.InputBegan:Connect(function(input)
        or input.UserInputType == Enum.UserInputType.Touch then
         minimized = not minimized
         if minimized then
-            Main:TweenSize(UDim2.fromOffset(W,48), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
-            Sidebar.Visible=false; Content.Visible=false
+            Main:TweenSize(UDim2.fromOffset(W,62), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
+            Sidebar.Visible=false; Content.Visible=false; topDiv.Visible=false
         else
             Main:TweenSize(UDim2.fromOffset(W,H), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
-            Sidebar.Visible=true; Content.Visible=true
+            Sidebar.Visible=true; Content.Visible=true; topDiv.Visible=true
         end
     end
 end)
@@ -1376,11 +1486,11 @@ end))
 switchTab("main")
 for _, b in ipairs(Sidebar:GetChildren()) do
     if b:IsA("TextButton") and b.Text:find("Main") then
-        b.BackgroundTransparency=0.05; b.TextColor3=T.Accent
+        b.BackgroundTransparency=0.1; b.TextColor3=T.Accent
         local a = b:FindFirstChildOfClass("Frame")
-        if a then a.Size = UDim2.new(0,3,0,14) end
+        if a then a.Size = UDim2.new(0,3,0,18) end
     end
 end
 
 task.wait(0.3)
-notify("FXA CANNON","v4.1 · RightCtrl toggle · RightShift unload","success")
+notify("FXA CANNON","v5.0 · RightCtrl toggle · RightShift unload","success")
