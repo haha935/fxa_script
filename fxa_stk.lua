@@ -1,12 +1,13 @@
 --[[
-    Survive The Killer v1.0
+    Survive The Killer v1.1
     (masih dibuat v1)
-    Delta Executor | Custom UI | UserInputService close binding
+    Delta Executor | Close fixed (4-layer bind) | 10 new features
 ]]
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting          = game:GetService("Lighting")
 local VirtualUser       = game:GetService("VirtualUser")
 local TweenService      = game:GetService("TweenService")
 local UserInputService  = game:GetService("UserInputService")
@@ -14,26 +15,17 @@ local CoreGui           = game:GetService("CoreGui")
 local Stats             = game:GetService("Stats")
 local Workspace         = game:GetService("Workspace")
 local LocalPlayer       = Players.LocalPlayer
+local Camera            = Workspace.CurrentCamera
 local SESSION_START     = tick()
 
--- ═══════════════════════════════════════════════════════════
--- CONFIG
--- ═══════════════════════════════════════════════════════════
 local CONFIG = {
     BackgroundURL = "https://files.catbox.moe/0oc9zi.jpeg",
     LogoOverride  = "",
     Theme = {
-        Bg        = Color3.fromRGB(9, 9, 12),
-        Panel     = Color3.fromRGB(22, 22, 27),
-        PanelAlt  = Color3.fromRGB(28, 28, 34),
-        Border    = Color3.fromRGB(48, 48, 58),
-        Accent    = Color3.fromRGB(235, 32, 44),
-        AccentDim = Color3.fromRGB(120, 18, 24),
-        Text      = Color3.fromRGB(240, 240, 245),
-        TextHi    = Color3.fromRGB(255, 255, 255),
-        TextDim   = Color3.fromRGB(140, 140, 155),
-        Success   = Color3.fromRGB(74, 222, 128),
-        Info      = Color3.fromRGB(96, 165, 250),
+        Bg=Color3.fromRGB(9,9,12), Panel=Color3.fromRGB(22,22,27), PanelAlt=Color3.fromRGB(28,28,34),
+        Border=Color3.fromRGB(48,48,58), Accent=Color3.fromRGB(235,32,44), AccentDim=Color3.fromRGB(120,18,24),
+        Text=Color3.fromRGB(240,240,245), TextHi=Color3.fromRGB(255,255,255), TextDim=Color3.fromRGB(140,140,155),
+        Success=Color3.fromRGB(74,222,128), Info=Color3.fromRGB(96,165,250), Gold=Color3.fromRGB(250,204,21),
     },
     LockerNames={"locker","closet","cabinet","wardrobe","hide"},
     TrapNames={"trap","beartrap","spike","mousetrap"},
@@ -41,7 +33,8 @@ local CONFIG = {
     DownedTags={"helpme","help me","downed","wounded","revive"},
     TimerNames={"timer","roundtime","timeleft","countdown"},
     KillReach=6, KillCooldown=0.3, ExitFrontOffset=5,
-    WindowW=450, WindowH=380,
+    DodgeDistance=15, DodgeRange=30, TrapAvoidRange=12,
+    WindowW=450, WindowH=390,
 }
 
 local function loadAsset(url, fn)
@@ -54,24 +47,19 @@ end
 local BG_ASSET = loadAsset(CONFIG.BackgroundURL, "stk_bg.png")
 local LOGO_ASSET = CONFIG.LogoOverride ~= "" and CONFIG.LogoOverride or BG_ASSET
 
--- ═══════════════════════════════════════════════════════════
--- STATE
--- ═══════════════════════════════════════════════════════════
 local State = {
     AutoBecomeKiller=false, AutoKill=false, AutoEscape=false,
     AutoBreakFree=true, AutoSavePlayer=false, TPOnDowned=false,
-    Speed=16, Jump=50, Noclip=false,
-    Godmode=false, InfiniteStamina=false, AntiAFK=false,
+    AutoDodge=false, AntiTrap=false, KillerAlert=true, InfiniteJump=false,
+    Fullbright=false, KillNotifySound=false,
+    Speed=16, Jump=50, Noclip=false, Godmode=false, InfiniteStamina=false, AntiAFK=false, FOV=70,
     ESP_Survivor=false, ESP_Killer=false, ESP_Downed=false,
-    ESP_Lockers=false, ESP_Traps=false, ESP_Exits=false, ESP_Distance=true,
+    ESP_Lockers=false, ESP_Traps=false, ESP_Exits=false, ESP_Distance=true, ESP_KillerArrow=false,
 }
 
 local CONNECTIONS = {}
 local function track(c) table.insert(CONNECTIONS, c); return c end
 
--- ═══════════════════════════════════════════════════════════
--- UTIL
--- ═══════════════════════════════════════════════════════════
 local function char() return LocalPlayer.Character end
 local function hrp() local c=char(); return c and c:FindFirstChild("HumanoidRootPart") end
 local function hum() local c=char(); return c and c:FindFirstChildOfClass("Humanoid") end
@@ -123,6 +111,25 @@ local function isGrabbed()
     local hm = c:FindFirstChildOfClass("Humanoid")
     if hm and hm.PlatformStand then return true end
     return false
+end
+
+local function getKillerPlayer()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if isKiller(plr) then return plr end
+    end
+    return nil
+end
+
+local function getKillerHRP()
+    local k = getKillerPlayer()
+    if not k or not k.Character then return nil end
+    return k.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function distToKiller()
+    local a = hrp(); local b = getKillerHRP()
+    if not a or not b then return nil end
+    return (a.Position - b.Position).Magnitude
 end
 
 -- ═══════════════════════════════════════════════════════════
@@ -279,6 +286,7 @@ task.spawn(function()
     end
 end)
 
+-- AUTO SAVE
 local function findProximityPrompt(c)
     if not c then return nil end
     for _, d in ipairs(c:GetDescendants()) do
@@ -318,6 +326,23 @@ local function nearestDowned()
     return best
 end
 
+local function saveAllDowned()
+    local saved = 0
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isDowned(plr) then
+            local p = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+            local myHrp = hrp()
+            if p and myHrp then
+                myHrp.CFrame = CFrame.new(p.Position + Vector3.new(0,3,0))
+                task.wait(0.12)
+                tryRevive(p)
+                saved = saved + 1
+            end
+        end
+    end
+    return saved
+end
+
 task.spawn(function()
     while true do
         if State.AutoSavePlayer then
@@ -335,6 +360,7 @@ task.spawn(function()
     end
 end)
 
+-- BREAK FREE
 task.spawn(function()
     while true do
         if State.AutoBreakFree and isGrabbed() then
@@ -345,15 +371,84 @@ task.spawn(function()
                 end
             end)
             for _, r in ipairs(EscapeRemotes) do
-                pcall(function()
-                    if r:IsA("RemoteEvent") then r:FireServer() end
-                end)
+                pcall(function() if r:IsA("RemoteEvent") then r:FireServer() end end)
             end
         end
         task.wait(0.2)
     end
 end)
 
+-- NEW: AUTO DODGE
+task.spawn(function()
+    while true do
+        if State.AutoDodge and not isKiller(LocalPlayer) then
+            local d = distToKiller()
+            if d and d < CONFIG.DodgeDistance then
+                local myHrp = hrp()
+                local kHrp = getKillerHRP()
+                if myHrp and kHrp then
+                    local dir = (myHrp.Position - kHrp.Position).Unit
+                    local dest = myHrp.Position + dir * CONFIG.DodgeRange
+                    local ray = Ray.new(myHrp.Position, (dest - myHrp.Position))
+                    local hitPart = Workspace:FindPartOnRay(ray, char())
+                    if not hitPart then
+                        myHrp.CFrame = CFrame.new(dest)
+                    else
+                        myHrp.CFrame = CFrame.new(myHrp.Position + dir * 10)
+                    end
+                end
+            end
+        end
+        task.wait(0.15)
+    end
+end)
+
+-- NEW: ANTI-TRAP
+task.spawn(function()
+    while true do
+        if State.AntiTrap then
+            local myHrp = hrp()
+            if myHrp then
+                for _, obj in ipairs(Workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and nameMatches(obj.Name, CONFIG.TrapNames) then
+                        local d = (obj.Position - myHrp.Position).Magnitude
+                        if d < CONFIG.TrapAvoidRange then
+                            local dir = (myHrp.Position - obj.Position).Unit
+                            myHrp.CFrame = CFrame.new(myHrp.Position + dir * 12)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.25)
+    end
+end)
+
+-- NEW: KILLER ALERT + SOUND
+local lastAlertDist = math.huge
+task.spawn(function()
+    while true do
+        if State.KillerAlert then
+            local d = distToKiller()
+            if d and d < 35 and d < lastAlertDist - 5 then
+                lastAlertDist = d
+                pcall(function()
+                    local s = Instance.new("Sound", LocalPlayer:FindFirstChildOfClass("PlayerGui") or Workspace)
+                    s.SoundId = "rbxassetid://9120386436"
+                    s.Volume = 0.6
+                    s:Play()
+                    task.delay(2, function() s:Destroy() end)
+                end)
+            elseif d and d > 40 then
+                lastAlertDist = math.huge
+            end
+        end
+        task.wait(0.4)
+    end
+end)
+
+-- HEARTBEAT
 track(RunService.Heartbeat:Connect(function()
     if State.Godmode then
         local h = hum()
@@ -389,6 +484,51 @@ track(RunService.Heartbeat:Connect(function()
     end
 end))
 
+-- NEW: FULLBRIGHT
+local originalAmbient, originalOutdoor, originalBrightness
+task.spawn(function()
+    while true do
+        if State.Fullbright then
+            if not originalAmbient then
+                originalAmbient = Lighting.Ambient
+                originalOutdoor = Lighting.OutdoorAmbient
+                originalBrightness = Lighting.Brightness
+            end
+            Lighting.Ambient = Color3.fromRGB(180,180,180)
+            Lighting.OutdoorAmbient = Color3.fromRGB(180,180,180)
+            Lighting.Brightness = 3
+            Lighting.FogEnd = 100000
+        else
+            if originalAmbient then
+                Lighting.Ambient = originalAmbient
+                Lighting.OutdoorAmbient = originalOutdoor
+                Lighting.Brightness = originalBrightness
+                originalAmbient = nil
+            end
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- NEW: FOV
+task.spawn(function()
+    while true do
+        if Camera and Camera.FieldOfView ~= State.FOV then
+            Camera.FieldOfView = State.FOV
+        end
+        task.wait(0.3)
+    end
+end)
+
+-- NEW: INFINITE JUMP
+track(UserInputService.JumpRequest:Connect(function()
+    if State.InfiniteJump then
+        local h = hum()
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end))
+
+-- AUTO-ESCAPE
 local function findExitDoor()
     local myHrp = hrp(); if not myHrp then return nil end
     local best, bestDist = nil, math.huge
@@ -426,9 +566,7 @@ task.spawn(function()
                 for _, r in ipairs(EscapeRemotes) do
                     pcall(function()
                         if r:IsA("RemoteEvent") then
-                            r:FireServer()
-                            r:FireServer(d)
-                            r:FireServer(LocalPlayer)
+                            r:FireServer(); r:FireServer(d); r:FireServer(LocalPlayer)
                         end
                     end)
                 end
@@ -442,6 +580,8 @@ end)
 -- ESP
 -- ═══════════════════════════════════════════════════════════
 local playerData = {}
+local killerArrow = nil
+
 local function createNameplate(plr, head, color)
     local bb = Instance.new("BillboardGui")
     bb.Name="STK_NP"; bb.Adornee=head
@@ -520,6 +660,39 @@ local function playerESP()
         end
     end
 end
+
+-- KILLER ARROW — 3D arrow above your own head pointing to killer
+local function ensureKillerArrow()
+    if not State.ESP_KillerArrow then
+        if killerArrow then killerArrow:Destroy(); killerArrow = nil end
+        return
+    end
+    local myHead = char() and char():FindFirstChild("Head")
+    if not myHead then return end
+    if not killerArrow or not killerArrow.Parent then
+        local att = Instance.new("Attachment", myHead)
+        att.Name = "STK_ArrowAtt"
+        local beam = Instance.new("Beam", att)
+        beam.Name = "STK_ArrowBeam"
+        beam.Attachment0 = att
+        beam.Width0 = 1.2
+        beam.Width1 = 0.2
+        beam.Color = ColorSequence.new(Color3.fromRGB(235,32,44))
+        beam.FaceCamera = true
+        beam.Transparency = NumberSequence.new(0)
+        local att2 = Instance.new("Attachment", myHead)
+        att2.Name = "STK_ArrowEnd"
+        att2.Position = Vector3.new(0, 4, 0)
+        beam.Attachment1 = att2
+        killerArrow = {att=att, att2=att2, beam=beam}
+    end
+    local kHrp = getKillerHRP()
+    if kHrp and killerArrow.att2 then
+        local dir = (kHrp.Position - myHead.Position).Unit
+        killerArrow.att2.Position = Vector3.new(dir.X * 5, 4, dir.Z * 5)
+    end
+end
+track(RunService.Heartbeat:Connect(function() ensureKillerArrow() end))
 
 local lockerHL, trapHL, exitHL = {}, {}, {}
 local function clearHL(t) for _,h in pairs(t) do h:Destroy() end return {} end
@@ -600,7 +773,7 @@ end)
 if not ok or not gui then
     gui = Instance.new("ScreenGui")
     gui.Name="STK_v1"; gui.ResetOnSpawn=false; gui.IgnoreGuiInset=true
-    gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+    gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; gui.DisplayOrder=999999
     gui.Parent=LocalPlayer:WaitForChild("PlayerGui")
 end
 
@@ -608,7 +781,7 @@ local W, H = CONFIG.WindowW, CONFIG.WindowH
 local Main = mk("Frame", {
     Name="Main", Size=UDim2.fromOffset(W,H),
     Position=UDim2.new(0.5,-W/2,0.5,-H/2),
-    BackgroundColor3=T.Bg, BorderSizePixel=0, ClipsDescendants=true, Active=false,
+    BackgroundColor3=T.Bg, BorderSizePixel=0, ClipsDescendants=true, Active=true,
 }, gui)
 corner(Main, UDim.new(0,14)); stroke(Main, T.Border, 1)
 
@@ -616,8 +789,7 @@ if BG_ASSET then
     mk("ImageLabel", {
         Name="BG", Size=UDim2.fromScale(1,1),
         BackgroundTransparency=1, Image=BG_ASSET,
-        ScaleType=Enum.ScaleType.Crop,
-        ImageTransparency=0.42, ZIndex=1,
+        ScaleType=Enum.ScaleType.Crop, ImageTransparency=0.42, ZIndex=1,
     }, Main)
 end
 local BGDim = mk("Frame", {
@@ -626,41 +798,33 @@ local BGDim = mk("Frame", {
     BackgroundTransparency=BG_ASSET and 0.55 or 0.05,
     BorderSizePixel=0, ZIndex=2,
 }, Main)
-mk("UIGradient", {
-    Rotation=90,
-    Transparency=NumberSequence.new({
-        NumberSequenceKeypoint.new(0,0.15),
-        NumberSequenceKeypoint.new(1,0.8)}),
-}, BGDim)
+mk("UIGradient", {Rotation=90, Transparency=NumberSequence.new({
+    NumberSequenceKeypoint.new(0,0.15), NumberSequenceKeypoint.new(1,0.8)})}, BGDim)
 
 local TopBar = mk("Frame", {
     Size=UDim2.new(1,0,0,62),
-    BackgroundColor3=Color3.fromRGB(14,14,18),
-    BackgroundTransparency=0.3,
+    BackgroundColor3=Color3.fromRGB(14,14,18), BackgroundTransparency=0.3,
     BorderSizePixel=0, ZIndex=10, Active=true,
 }, Main)
 
 local LOGO_SIZE = 40
 local Logo = mk("ImageLabel", {
-    Name="Logo",
-    Size=UDim2.fromOffset(LOGO_SIZE, LOGO_SIZE),
+    Name="Logo", Size=UDim2.fromOffset(LOGO_SIZE, LOGO_SIZE),
     Position=UDim2.fromOffset(14, 11),
-    BackgroundTransparency=1,
-    Image=LOGO_ASSET or "",
-    ScaleType=Enum.ScaleType.Crop,
-    BorderSizePixel=0, ZIndex=11,
+    BackgroundTransparency=1, Image=LOGO_ASSET or "",
+    ScaleType=Enum.ScaleType.Crop, BorderSizePixel=0, ZIndex=11,
 }, TopBar)
 corner(Logo, UDim.new(1, 0))
 mk("UIStroke", {Color=T.Accent, Thickness=2, ApplyStrokeMode=Enum.ApplyStrokeMode.Border}, Logo)
 
 mk("TextLabel", {
-    Size=UDim2.fromOffset(220,16), Position=UDim2.fromOffset(64,12),
-    BackgroundTransparency=1, Text="Survive The Killer v1.0",
-    TextColor3=T.TextHi, Font=Enum.Font.GothamBlack, TextSize=14,
+    Size=UDim2.fromOffset(200,16), Position=UDim2.fromOffset(64,10),
+    BackgroundTransparency=1, Text="Survive The Killer v1.1",
+    TextColor3=T.TextHi, Font=Enum.Font.GothamBlack, TextSize=13,
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=11,
 }, TopBar)
 mk("TextLabel", {
-    Size=UDim2.fromOffset(220,12), Position=UDim2.fromOffset(64,31),
+    Size=UDim2.fromOffset(200,12), Position=UDim2.fromOffset(64,28),
     BackgroundTransparency=1, Text="(masih dibuat v1)",
     TextColor3=T.Accent, Font=Enum.Font.GothamBold, TextSize=8,
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=11,
@@ -672,29 +836,35 @@ local killerLbl = mk("TextLabel", {
     TextColor3=T.Accent, Font=Enum.Font.GothamBold, TextSize=9,
     TextXAlignment=Enum.TextXAlignment.Right, ZIndex=11,
 }, TopBar)
+local distLbl = mk("TextLabel", {
+    Size=UDim2.fromOffset(140,14), Position=UDim2.new(1,-155,0,28),
+    BackgroundTransparency=1, Text="DIST  —",
+    TextColor3=T.Gold, Font=Enum.Font.GothamBold, TextSize=9,
+    TextXAlignment=Enum.TextXAlignment.Right, ZIndex=11,
+}, TopBar)
 local timeLbl = mk("TextLabel", {
-    Size=UDim2.fromOffset(140,14), Position=UDim2.new(1,-155,0,30),
+    Size=UDim2.fromOffset(140,12), Position=UDim2.new(1,-155,0,42),
     BackgroundTransparency=1, Text="⏱  --:--",
-    TextColor3=T.TextDim, Font=Enum.Font.GothamMedium, TextSize=9,
+    TextColor3=T.TextDim, Font=Enum.Font.GothamMedium, TextSize=8,
     TextXAlignment=Enum.TextXAlignment.Right, ZIndex=11,
 }, TopBar)
 
 local CloseBtn = mk("TextButton", {
-    Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-34,0,18),
-    BackgroundColor3=Color3.fromRGB(70,22,26),
+    Size=UDim2.fromOffset(28,28), Position=UDim2.new(1,-36,0,17),
+    BackgroundColor3=Color3.fromRGB(80,24,30),
     Text="×", TextColor3=T.TextHi,
-    Font=Enum.Font.GothamBlack, TextSize=15,
-    BorderSizePixel=0, ZIndex=200, AutoButtonColor=false,
+    Font=Enum.Font.GothamBlack, TextSize=17,
+    BorderSizePixel=0, ZIndex=250, AutoButtonColor=false, Active=true,
 }, TopBar)
 corner(CloseBtn, UDim.new(0,7))
-stroke(CloseBtn, T.Accent, 1)
+stroke(CloseBtn, T.Accent, 1.5)
 
 local MinBtn = mk("TextButton", {
-    Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-66,0,18),
+    Size=UDim2.fromOffset(28,28), Position=UDim2.new(1,-70,0,17),
     BackgroundColor3=T.PanelAlt,
     Text="—", TextColor3=T.TextHi,
-    Font=Enum.Font.GothamBlack, TextSize=14,
-    BorderSizePixel=0, ZIndex=200, AutoButtonColor=false,
+    Font=Enum.Font.GothamBlack, TextSize=15,
+    BorderSizePixel=0, ZIndex=250, AutoButtonColor=false, Active=true,
 }, TopBar)
 corner(MinBtn, UDim.new(0,7))
 stroke(MinBtn, T.Border, 1)
@@ -705,7 +875,7 @@ local topDiv = mk("Frame", {
     BorderSizePixel=0, ZIndex=9,
 }, Main)
 
-local SIDEBAR_W = 108
+local SIDEBAR_W = 112
 local Sidebar = mk("Frame", {
     Size=UDim2.new(0,SIDEBAR_W,1,-72), Position=UDim2.fromOffset(10,70),
     BackgroundColor3=T.Panel, BackgroundTransparency=0.15,
@@ -753,7 +923,7 @@ end
 
 local function createTabButton(title, key)
     local btn = mk("TextButton", {
-        Size=UDim2.new(1,0,0,30),
+        Size=UDim2.new(1,0,0,28),
         BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.35,
         Text="   "..title, TextColor3=T.Text,
         Font=Enum.Font.GothamMedium, TextSize=11,
@@ -766,7 +936,6 @@ local function createTabButton(title, key)
         BackgroundColor3=T.Accent, BorderSizePixel=0,
     }, btn)
     corner(accent, UDim.new(1,0))
-
     local page = mk("Frame", {
         Name=key, Size=UDim2.new(1,0,0,0),
         AutomaticSize=Enum.AutomaticSize.Y,
@@ -774,7 +943,6 @@ local function createTabButton(title, key)
     }, Content)
     mk("UIListLayout", {Padding=UDim.new(0,6), SortOrder=Enum.SortOrder.LayoutOrder}, page)
     tabs[key]=page
-
     btn.MouseEnter:Connect(function() btn.BackgroundTransparency=0.1 end)
     btn.MouseLeave:Connect(function() if currentTab~=key then btn.BackgroundTransparency=0.35 end end)
     btn.MouseButton1Click:Connect(function()
@@ -793,25 +961,16 @@ local function createTabButton(title, key)
 end
 
 local function sectionHeader(parent, title)
-    local holder = mk("Frame", {
-        Size=UDim2.new(1,0,0,22),
-        BackgroundTransparency=1,
-    }, parent)
+    local holder = mk("Frame", {Size=UDim2.new(1,0,0,22), BackgroundTransparency=1}, parent)
     mk("TextLabel", {
-        Size=UDim2.new(1,0,0,14), Position=UDim2.fromOffset(0,0),
-        BackgroundTransparency=1, Text=title:upper(),
+        Size=UDim2.new(1,0,0,14), BackgroundTransparency=1, Text=title:upper(),
         TextColor3=T.Accent, Font=Enum.Font.GothamBlack, TextSize=9,
         TextXAlignment=Enum.TextXAlignment.Left,
     }, holder)
-    mk("Frame", {
-        Size=UDim2.new(0,24,0,2), Position=UDim2.fromOffset(0,18),
-        BackgroundColor3=T.Accent, BorderSizePixel=0,
-    }, holder)
-    mk("Frame", {
-        Size=UDim2.new(1,-30,0,1), Position=UDim2.fromOffset(30,19),
-        BackgroundColor3=T.Border, BackgroundTransparency=0.5,
-        BorderSizePixel=0,
-    }, holder)
+    mk("Frame", {Size=UDim2.new(0,24,0,2), Position=UDim2.fromOffset(0,18),
+        BackgroundColor3=T.Accent, BorderSizePixel=0}, holder)
+    mk("Frame", {Size=UDim2.new(1,-30,0,1), Position=UDim2.fromOffset(30,19),
+        BackgroundColor3=T.Border, BackgroundTransparency=0.5, BorderSizePixel=0}, holder)
     return holder
 end
 
@@ -828,9 +987,8 @@ local function toggle(parent, title, desc, default, cb)
     corner(bar, UDim.new(1,0))
     mk("TextLabel", {
         Size=UDim2.new(1,-50,0, desc and 14 or 30),
-        Position=UDim2.fromOffset(12,0),
-        BackgroundTransparency=1, Text=title, TextColor3=T.Text,
-        Font=Enum.Font.GothamMedium, TextSize=11,
+        Position=UDim2.fromOffset(12,0), BackgroundTransparency=1, Text=title,
+        TextColor3=T.Text, Font=Enum.Font.GothamMedium, TextSize=11,
         TextXAlignment=Enum.TextXAlignment.Left,
         TextYAlignment= desc and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
     }, row)
@@ -838,8 +996,7 @@ local function toggle(parent, title, desc, default, cb)
         mk("TextLabel", {
             Size=UDim2.new(1,-50,0,11), Position=UDim2.fromOffset(12,14),
             BackgroundTransparency=1, Text=desc, TextColor3=T.TextDim,
-            Font=Enum.Font.Gotham, TextSize=9,
-            TextXAlignment=Enum.TextXAlignment.Left,
+            Font=Enum.Font.Gotham, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left,
         }, row)
     end
     local st = default or false
@@ -860,13 +1017,10 @@ local function toggle(parent, title, desc, default, cb)
     row.MouseLeave:Connect(function() row.BackgroundTransparency=0.25 end)
     sw.MouseButton1Click:Connect(function()
         st = not st
-        if st then
-            sw.BackgroundColor3=T.Accent; bar.BackgroundColor3=T.Accent
+        if st then sw.BackgroundColor3=T.Accent; bar.BackgroundColor3=T.Accent
             TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(1,-14,0.5,-6)}):Play()
-        else
-            sw.BackgroundColor3=T.Border; bar.BackgroundColor3=T.Border
-            TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(0,2,0.5,-6)}):Play()
-        end
+        else sw.BackgroundColor3=T.Border; bar.BackgroundColor3=T.Border
+            TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(0,2,0.5,-6)}):Play() end
         if cb then pcall(cb, st) end
     end)
 end
@@ -877,39 +1031,27 @@ local function slider(parent, title, min, max, default, cb)
         BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.25, BorderSizePixel=0,
     }, parent)
     corner(row, UDim.new(0,8)); pad(row, 10)
-    mk("TextLabel", {
-        Size=UDim2.new(1,-60,0,13), BackgroundTransparency=1, Text=title,
+    mk("TextLabel", {Size=UDim2.new(1,-60,0,13), BackgroundTransparency=1, Text=title,
         TextColor3=T.Text, Font=Enum.Font.GothamMedium, TextSize=11,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    }, row)
-    local vl = mk("TextLabel", {
-        Size=UDim2.fromOffset(60,13), Position=UDim2.new(1,-60,0,0),
-        BackgroundTransparency=1, Text=tostring(default),
-        TextColor3=T.Accent, Font=Enum.Font.GothamBlack, TextSize=11,
-        TextXAlignment=Enum.TextXAlignment.Right,
-    }, row)
-    local track = mk("Frame", {
-        Size=UDim2.new(1,0,0,4), Position=UDim2.fromOffset(0,26),
-        BackgroundColor3=T.Border, BorderSizePixel=0,
-    }, row)
+        TextXAlignment=Enum.TextXAlignment.Left}, row)
+    local vl = mk("TextLabel", {Size=UDim2.fromOffset(60,13), Position=UDim2.new(1,-60,0,0),
+        BackgroundTransparency=1, Text=tostring(default), TextColor3=T.Accent,
+        Font=Enum.Font.GothamBlack, TextSize=11, TextXAlignment=Enum.TextXAlignment.Right}, row)
+    local track = mk("Frame", {Size=UDim2.new(1,0,0,4), Position=UDim2.fromOffset(0,26),
+        BackgroundColor3=T.Border, BorderSizePixel=0}, row)
     corner(track, UDim.new(1,0))
-    local fill = mk("Frame", {
-        Size=UDim2.new((default-min)/(max-min),0,1,0),
-        BackgroundColor3=T.Accent, BorderSizePixel=0,
-    }, track)
+    local fill = mk("Frame", {Size=UDim2.new((default-min)/(max-min),0,1,0),
+        BackgroundColor3=T.Accent, BorderSizePixel=0}, track)
     corner(fill, UDim.new(1,0))
-    local knob = mk("Frame", {
-        Size=UDim2.fromOffset(11,11),
+    local knob = mk("Frame", {Size=UDim2.fromOffset(11,11),
         Position=UDim2.new((default-min)/(max-min),-5.5,0.5,-5.5),
-        BackgroundColor3=Color3.new(1,1,1), BorderSizePixel=0, ZIndex=2,
-    }, track)
+        BackgroundColor3=Color3.new(1,1,1), BorderSizePixel=0, ZIndex=2}, track)
     corner(knob, UDim.new(1,0))
     local dragging = false
     local function upd(input)
         local r = math.clamp((input.Position.X - track.AbsolutePosition.X)/track.AbsoluteSize.X, 0, 1)
         local v = math.floor(min + (max-min)*r + 0.5)
-        fill.Size = UDim2.new(r,0,1,0)
-        knob.Position = UDim2.new(r,-5.5,0.5,-5.5)
+        fill.Size = UDim2.new(r,0,1,0); knob.Position = UDim2.new(r,-5.5,0.5,-5.5)
         vl.Text = tostring(v)
         if cb then pcall(cb, v) end
     end
@@ -933,26 +1075,18 @@ local function button(parent, title, desc, cb)
         Text="", BorderSizePixel=0, AutoButtonColor=false,
     }, parent)
     corner(row, UDim.new(0,8)); pad(row, 10)
-    local bar = mk("Frame", {
-        Size=UDim2.new(0,3,1,-12), Position=UDim2.fromOffset(0,6),
-        BackgroundColor3=T.AccentDim, BorderSizePixel=0, ZIndex=2,
-    }, row)
+    local bar = mk("Frame", {Size=UDim2.new(0,3,1,-12), Position=UDim2.fromOffset(0,6),
+        BackgroundColor3=T.AccentDim, BorderSizePixel=0, ZIndex=2}, row)
     corner(bar, UDim.new(1,0))
-    mk("TextLabel", {
-        Size=UDim2.new(1,0,0, desc and 14 or 30),
-        Position=UDim2.fromOffset(12,0),
-        BackgroundTransparency=1, Text=title, TextColor3=T.Text,
-        Font=Enum.Font.GothamMedium, TextSize=11,
+    mk("TextLabel", {Size=UDim2.new(1,0,0, desc and 14 or 30),
+        Position=UDim2.fromOffset(12,0), BackgroundTransparency=1, Text=title,
+        TextColor3=T.Text, Font=Enum.Font.GothamMedium, TextSize=11,
         TextXAlignment=Enum.TextXAlignment.Left,
-        TextYAlignment= desc and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
-    }, row)
+        TextYAlignment= desc and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center}, row)
     if desc then
-        mk("TextLabel", {
-            Size=UDim2.new(1,0,0,11), Position=UDim2.fromOffset(12,14),
+        mk("TextLabel", {Size=UDim2.new(1,0,0,11), Position=UDim2.fromOffset(12,14),
             BackgroundTransparency=1, Text=desc, TextColor3=T.TextDim,
-            Font=Enum.Font.Gotham, TextSize=9,
-            TextXAlignment=Enum.TextXAlignment.Left,
-        }, row)
+            Font=Enum.Font.Gotham, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left}, row)
     end
     row.MouseEnter:Connect(function() row.BackgroundTransparency=0.05 end)
     row.MouseLeave:Connect(function() row.BackgroundTransparency=0.25 end)
@@ -981,22 +1115,14 @@ local function notify(title, text, kind)
         BorderSizePixel=0, ZIndex=101,
     }, notifHolder)
     corner(h, UDim.new(0,10)); stroke(h, color, 1.5)
-    mk("Frame", {
-        Size=UDim2.new(0,3,1,-14), Position=UDim2.fromOffset(6,7),
-        BackgroundColor3=color, BorderSizePixel=0,
-    }, h)
-    mk("TextLabel", {
-        Size=UDim2.new(1,-18,0,13), Position=UDim2.fromOffset(14,6),
+    mk("Frame", {Size=UDim2.new(0,3,1,-14), Position=UDim2.fromOffset(6,7),
+        BackgroundColor3=color, BorderSizePixel=0}, h)
+    mk("TextLabel", {Size=UDim2.new(1,-18,0,13), Position=UDim2.fromOffset(14,6),
         BackgroundTransparency=1, Text=title, TextColor3=color,
-        Font=Enum.Font.GothamBlack, TextSize=10,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    }, h)
-    mk("TextLabel", {
-        Size=UDim2.new(1,-18,0,20), Position=UDim2.fromOffset(14,21),
+        Font=Enum.Font.GothamBlack, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left}, h)
+    mk("TextLabel", {Size=UDim2.new(1,-18,0,20), Position=UDim2.fromOffset(14,21),
         BackgroundTransparency=1, Text=text, TextColor3=T.TextDim,
-        Font=Enum.Font.Gotham, TextSize=9,
-        TextXAlignment=Enum.TextXAlignment.Left, TextWrapped=true,
-    }, h)
+        Font=Enum.Font.Gotham, TextSize=9, TextXAlignment=Enum.TextXAlignment.Left, TextWrapped=true}, h)
     h.Position = UDim2.new(1,300,0,0)
     TweenService:Create(h, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {Position=UDim2.new(0,0,0,0)}):Play()
     task.delay(3, function()
@@ -1006,85 +1132,100 @@ local function notify(title, text, kind)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- TAB: MAIN
+-- TABS
 -- ═══════════════════════════════════════════════════════════
 local MainPage = createTabButton("Main", "main")
-
 sectionHeader(MainPage, "Killer")
-toggle(MainPage, "Auto Become Killer", "Burst-fires StartRoulette + LoadPropKiller", false, function(v)
+toggle(MainPage, "Auto Become Killer", "StartRoulette + LoadPropKiller", false, function(v)
     State.AutoBecomeKiller = v
-    if v then notify("Auto Killer","Burst-firing role remotes.","info") end
+    if v then notify("Auto Killer","Burst-firing.","info") end
 end)
-toggle(MainPage, "Auto Kill", "Fires live Knife.OnHit at nearest", false, function(v)
+toggle(MainPage, "Auto Kill", "Knife.OnHit at nearest", false, function(v)
     State.AutoKill = v
-    if v then notify("Auto Kill","Active when you're killer.","info") end
+    if v then notify("Auto Kill","Active as killer.","info") end
 end)
 button(MainPage, "Force Kill Nearest (once)", nil, function()
     local t = nearestSurvivor()
-    if t then fireKillOn(t); notify("Kill","Fired on nearest.","success")
-    else notify("Kill","No survivor in range.","error") end
+    if t then fireKillOn(t); notify("Kill","Fired.","success")
+    else notify("Kill","No target.","error") end
 end)
 
 sectionHeader(MainPage, "Escape")
-toggle(MainPage, "Auto Escape", "Door-gated TP + fire escape remotes", false, function(v)
+toggle(MainPage, "Auto Escape", "Door-gated TP + fire remotes", false, function(v)
     State.AutoEscape = v
-    if v then notify("Auto Escape","Watching door state.","info") end
+    if v then notify("Escape","Watching door.","info") end
 end)
-button(MainPage, "Teleport to Exit Front (once)", nil, function()
+button(MainPage, "TP to Exit Front (once)", nil, function()
     local d = findExitDoor(); local myHrp = hrp()
     if d and myHrp then
         local look = d.CFrame.LookVector
         local f = d.Position - look * CONFIG.ExitFrontOffset
         myHrp.CFrame = CFrame.new(f, f + look)
-        notify("Escape","TP'd to front of door.","success")
-    else notify("Escape","No exit found.","error") end
+        notify("Escape","TP'd.","success")
+    else notify("Escape","No exit.","error") end
 end)
 
 sectionHeader(MainPage, "Survival")
-toggle(MainPage, "Auto Break Free", "Anti-grab — fires BreakFree when grabbed", true, function(v)
-    State.AutoBreakFree = v
-    if v then notify("Anti-Grab","Enabled.","success") end
+toggle(MainPage, "Auto Break Free", "Anti-grab", true, function(v) State.AutoBreakFree=v end)
+toggle(MainPage, "Auto Save Player", "TP + revive downed", false, function(v)
+    State.AutoSavePlayer=v
+    if v then notify("Save","Active.","info") end
 end)
-toggle(MainPage, "Auto Save Player", "TP to downed + fire revive prompt", false, function(v)
-    State.AutoSavePlayer = v
-    if v then notify("Auto Save","Active.","info") end
-end)
-button(MainPage, "Save Nearest Downed (once)", nil, function()
+button(MainPage, "Save Nearest Downed", nil, function()
     local t = nearestDowned(); local myHrp = hrp()
     if t and myHrp then
         myHrp.CFrame = CFrame.new(t.Position + Vector3.new(0,3,0))
         task.wait(0.1); tryRevive(t)
-        notify("Save","Attempted revive.","success")
-    else notify("Save","No downed player.","error") end
+        notify("Save","Attempted.","success")
+    else notify("Save","No downed.","error") end
+end)
+button(MainPage, "Save ALL Downed", "Cycles every knocked player", function()
+    local n = saveAllDowned()
+    notify("Save All", n.." player(s) revived.","success")
 end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: ESP
--- ═══════════════════════════════════════════════════════════
+sectionHeader(MainPage, "Defense")
+toggle(MainPage, "Auto Dodge", "Dash away when killer < 15 studs", false, function(v)
+    State.AutoDodge=v
+    if v then notify("Auto Dodge","Enabled.","success") end
+end)
+toggle(MainPage, "Anti-Trap", "TP away from nearest trap", false, function(v)
+    State.AntiTrap=v
+    if v then notify("Anti-Trap","Enabled.","success") end
+end)
+
+-- ESP
 local ESPPage = createTabButton("ESP", "esp")
-sectionHeader(ESPPage, "Player ESP")
-toggle(ESPPage, "Survivor ESP (Blue)", nil, false, function(v) State.ESP_Survivor=v end)
-toggle(ESPPage, "Killer ESP (Red)", nil, false, function(v) State.ESP_Killer=v end)
-toggle(ESPPage, "Downed ESP (Gold)", nil, false, function(v) State.ESP_Downed=v end)
-toggle(ESPPage, "Distance + Role Tag", nil, true, function(v) State.ESP_Distance=v end)
-sectionHeader(ESPPage, "Object ESP")
-toggle(ESPPage, "Locker ESP", "Red = occupied", false, function(v) State.ESP_Lockers=v end)
+sectionHeader(ESPPage, "Players")
+toggle(ESPPage, "Survivor (Blue)", nil, false, function(v) State.ESP_Survivor=v end)
+toggle(ESPPage, "Killer (Red)", nil, false, function(v) State.ESP_Killer=v end)
+toggle(ESPPage, "Downed (Gold)", nil, false, function(v) State.ESP_Downed=v end)
+toggle(ESPPage, "Distance + Role", nil, true, function(v) State.ESP_Distance=v end)
+toggle(ESPPage, "Killer Tracker Arrow", "3D arrow above you pointing at killer", false, function(v)
+    State.ESP_KillerArrow=v
+    if v then notify("Tracker","Arrow active.","info") end
+end)
+sectionHeader(ESPPage, "Objects")
+toggle(ESPPage, "Locker ESP", nil, false, function(v) State.ESP_Lockers=v end)
 toggle(ESPPage, "Trap ESP", nil, false, function(v) State.ESP_Traps=v end)
 toggle(ESPPage, "Exit ESP", nil, false, function(v) State.ESP_Exits=v end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: MOVE
--- ═══════════════════════════════════════════════════════════
+-- MOVE
 local MovePage = createTabButton("Move", "move")
 sectionHeader(MovePage, "Character")
 slider(MovePage, "Walk Speed", 16, 250, 16, function(v) State.Speed=v end)
 slider(MovePage, "Jump Power", 50, 400, 50, function(v) State.Jump=v end)
+slider(MovePage, "Camera FOV", 70, 130, 70, function(v) State.FOV=v end)
 toggle(MovePage, "Noclip", nil, false, function(v) State.Noclip=v end)
-toggle(MovePage, "Godmode", "Health lock + strip TouchTransmitter", false, function(v)
+toggle(MovePage, "Godmode", "Health + strip touch", false, function(v)
     State.Godmode=v
     if v then notify("Godmode","Active.","success") end
 end)
 toggle(MovePage, "Infinite Stamina", nil, false, function(v) State.InfiniteStamina=v end)
+toggle(MovePage, "Infinite Jump", "Jump in mid-air", false, function(v)
+    State.InfiniteJump=v
+    if v then notify("Inf Jump","Hold space to fly up.","success") end
+end)
 toggle(MovePage, "Anti-AFK", nil, false, function(v)
     State.AntiAFK=v
     if v then
@@ -1094,17 +1235,24 @@ toggle(MovePage, "Anti-AFK", nil, false, function(v)
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: PLAYERS
--- ═══════════════════════════════════════════════════════════
+-- VISION
+local VisionPage = createTabButton("Vision", "vision")
+sectionHeader(VisionPage, "Lighting")
+toggle(VisionPage, "Fullbright", "Max ambient + no fog", false, function(v)
+    State.Fullbright=v
+    if v then notify("Fullbright","Enabled.","success") end
+end)
+toggle(VisionPage, "Killer Alert Sound", "Audio ping when killer approaches", true, function(v)
+    State.KillerAlert=v
+    if v then notify("Alert","Sound on.","info") end
+end)
+
+-- PLAYERS
 local PlayerPage = createTabButton("Players", "players")
 sectionHeader(PlayerPage, "Click to TP")
-
 local playerListHolder = mk("Frame", {
-    Size=UDim2.new(1,0,0,0),
-    AutomaticSize=Enum.AutomaticSize.Y,
-    BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.4,
-    BorderSizePixel=0,
+    Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+    BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.4, BorderSizePixel=0,
 }, PlayerPage)
 corner(playerListHolder, UDim.new(0,8)); pad(playerListHolder, 5)
 mk("UIListLayout", {Padding=UDim.new(0,3), SortOrder=Enum.SortOrder.LayoutOrder}, playerListHolder)
@@ -1115,8 +1263,7 @@ local function refreshPlayerList()
     end
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
-            local killer = isKiller(plr)
-            local downed = isDowned(plr)
+            local killer = isKiller(plr); local downed = isDowned(plr)
             local role = killer and "KILLER" or downed and "DOWNED" or "SURVIVOR"
             local roleColor = killer and Color3.fromRGB(255,60,60)
                           or downed and Color3.fromRGB(255,200,0)
@@ -1127,22 +1274,16 @@ local function refreshPlayerList()
                 Text="", BorderSizePixel=0, AutoButtonColor=false,
             }, playerListHolder)
             corner(b, UDim.new(0,6))
-            mk("Frame", {
-                Size=UDim2.new(0,3,0.7,0), Position=UDim2.fromOffset(5,0.15),
-                BackgroundColor3=roleColor, BorderSizePixel=0,
-            }, b)
-            mk("TextLabel", {
-                Size=UDim2.new(0.6,0,1,0), Position=UDim2.fromOffset(14,0),
-                BackgroundTransparency=1, Text=plr.Name,
-                TextColor3=T.Text, Font=Enum.Font.GothamMedium,
-                TextSize=10, TextXAlignment=Enum.TextXAlignment.Left,
-            }, b)
-            mk("TextLabel", {
-                Size=UDim2.new(0.4,-10,1,0), Position=UDim2.new(0.6,0,0,0),
-                BackgroundTransparency=1, Text=role,
-                TextColor3=roleColor, Font=Enum.Font.GothamBold,
-                TextSize=9, TextXAlignment=Enum.TextXAlignment.Right,
-            }, b)
+            mk("Frame", {Size=UDim2.new(0,3,0.7,0), Position=UDim2.fromOffset(5,0.15),
+                BackgroundColor3=roleColor, BorderSizePixel=0}, b)
+            mk("TextLabel", {Size=UDim2.new(0.6,0,1,0), Position=UDim2.fromOffset(14,0),
+                BackgroundTransparency=1, Text=plr.Name, TextColor3=T.Text,
+                Font=Enum.Font.GothamMedium, TextSize=10,
+                TextXAlignment=Enum.TextXAlignment.Left}, b)
+            mk("TextLabel", {Size=UDim2.new(0.4,-10,1,0), Position=UDim2.new(0.6,0,0,0),
+                BackgroundTransparency=1, Text=role, TextColor3=roleColor,
+                Font=Enum.Font.GothamBold, TextSize=9,
+                TextXAlignment=Enum.TextXAlignment.Right}, b)
             b.MouseEnter:Connect(function() b.BackgroundTransparency=0.05 end)
             b.MouseLeave:Connect(function() b.BackgroundTransparency=0.25 end)
             b.MouseButton1Click:Connect(function()
@@ -1150,7 +1291,7 @@ local function refreshPlayerList()
                 local myHrp = hrp()
                 if t and myHrp then
                     myHrp.CFrame = CFrame.new(t.Position + Vector3.new(0,3,0))
-                    notify("Teleport","TP'd to "..plr.Name,"success")
+                    notify("TP","→ "..plr.Name,"success")
                 end
             end)
         end
@@ -1159,35 +1300,23 @@ end
 refreshPlayerList()
 track(Players.PlayerAdded:Connect(function() task.wait(0.5) refreshPlayerList() end))
 track(Players.PlayerRemoving:Connect(function() task.wait(0.5) refreshPlayerList() end))
-
 sectionHeader(PlayerPage, "Downed")
 toggle(PlayerPage, "Auto TP to Downed", nil, false, function(v) State.TPOnDowned=v end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: MY SELF
--- ═══════════════════════════════════════════════════════════
+-- MY SELF
 local SelfPage = createTabButton("My Self", "self")
 sectionHeader(SelfPage, "Live Dashboard")
-
 local function dataRow(parent, label)
-    local row = mk("Frame", {
-        Size=UDim2.new(1,0,0,22),
-        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.3,
-        BorderSizePixel=0,
-    }, parent)
+    local row = mk("Frame", {Size=UDim2.new(1,0,0,22),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.3, BorderSizePixel=0}, parent)
     corner(row, UDim.new(0,6)); pad(row, 8)
-    local lb = mk("TextLabel", {
-        Size=UDim2.new(0.45,0,1,0),
-        BackgroundTransparency=1, Text=label,
-        TextColor3=T.TextDim, Font=Enum.Font.GothamMedium,
-        TextSize=10, TextXAlignment=Enum.TextXAlignment.Left,
-    }, row)
-    local v = mk("TextLabel", {
-        Size=UDim2.new(0.55,0,1,0), Position=UDim2.new(0.45,0,0,0),
-        BackgroundTransparency=1, Text="—",
-        TextColor3=T.Text, Font=Enum.Font.Code,
-        TextSize=10, TextXAlignment=Enum.TextXAlignment.Right,
-    }, row)
+    mk("TextLabel", {Size=UDim2.new(0.45,0,1,0), BackgroundTransparency=1, Text=label,
+        TextColor3=T.TextDim, Font=Enum.Font.GothamMedium, TextSize=10,
+        TextXAlignment=Enum.TextXAlignment.Left}, row)
+    local v = mk("TextLabel", {Size=UDim2.new(0.55,0,1,0), Position=UDim2.new(0.45,0,0,0),
+        BackgroundTransparency=1, Text="—", TextColor3=T.Text,
+        Font=Enum.Font.Code, TextSize=10,
+        TextXAlignment=Enum.TextXAlignment.Right}, row)
     return row, v, label
 end
 
@@ -1213,19 +1342,16 @@ local function getFPS()
     for _, d in ipairs(fpsSamples) do sum = sum + d end
     return math.floor(#fpsSamples / sum + 0.5)
 end
-
 local function getPing()
     local ok, p = pcall(function() return LocalPlayer:GetNetworkPing() * 1000 end)
     if ok and p then return math.floor(p) end
     return 0
 end
-
 local function getMemMB()
     local ok, v = pcall(function() return Stats:GetTotalMemoryUsageMb() end)
     if ok and v then return math.floor(v) end
     return 0
 end
-
 local function getCurrentMap()
     for _, m in ipairs(Workspace:GetChildren()) do
         if m:IsA("Model") and m.Name:lower():find("map") then return m.Name end
@@ -1235,33 +1361,24 @@ local function getCurrentMap()
     end
     return "—"
 end
-
 local function getKillerName()
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if isKiller(plr) then return plr.Name end
-    end
-    return "—"
+    local k = getKillerPlayer()
+    return k and k.Name or "—"
 end
-
 local function getRole()
     if isKiller(LocalPlayer) then return "KILLER" end
     if isDowned(LocalPlayer) then return "DOWNED" end
-    local h = hum()
-    if h and h.Health <= 0 then return "DEAD" end
+    local h = hum(); if h and h.Health <= 0 then return "DEAD" end
     return "SURVIVOR"
 end
-
 local function fmtTime(s)
     if not s then return "—" end
     s = math.floor(tonumber(s) or 0)
     return string.format("%02d:%02d", math.floor(s/60), s%60)
 end
-
 local function fmtDur(s)
     s = math.floor(s)
-    local h = math.floor(s/3600)
-    local m = math.floor((s%3600)/60)
-    local sc = s%60
+    local h = math.floor(s/3600); local m = math.floor((s%3600)/60); local sc = s%60
     if h > 0 then return string.format("%dh %dm", h, m) end
     return string.format("%dm %ds", m, sc)
 end
@@ -1271,13 +1388,16 @@ local function add(label, fn)
     local _, v, lbl = dataRow(SelfPage, label)
     table.insert(R, {val=v, fn=fn, label=lbl})
 end
-
 add("Real Time", function() return os.date("%H:%M:%S") end)
 add("Date", function() return os.date("%d %b %Y") end)
 add("Session", function() return fmtDur(tick() - SESSION_START) end)
 add("Time Left", function() return fmtTime(getTimeLeft()) end)
 add("Role", function() return getRole() end)
 add("Killer", function() return getKillerName() end)
+add("Killer Distance", function()
+    local d = distToKiller()
+    return d and (math.floor(d).."m") or "—"
+end)
 add("Map", function() return getCurrentMap() end)
 add("Players", function() return #Players:GetPlayers().."/"..Players.MaxPlayers end)
 add("FPS", function() return getFPS() end)
@@ -1311,10 +1431,8 @@ add("Executor", function()
 end)
 
 button(SelfPage, "Copy Dashboard", "Full snapshot to clipboard", function()
-    local buf = {"── Survive The Killer v1.0 · MY SELF ──"}
-    for _, e in ipairs(R) do
-        table.insert(buf, e.label..": "..e.val.Text)
-    end
+    local buf = {"── STK v1.1 · MY SELF ──"}
+    for _, e in ipairs(R) do table.insert(buf, e.label..": "..e.val.Text) end
     if setclipboard then
         setclipboard(table.concat(buf, "\n"))
         notify("Copied","Dashboard on clipboard.","success")
@@ -1333,12 +1451,9 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: REMOTES
--- ═══════════════════════════════════════════════════════════
+-- REMOTES
 local RemotePage = createTabButton("Remotes", "remotes")
-sectionHeader(RemotePage, "Bound Remotes")
-
+sectionHeader(RemotePage, "Bound")
 local boundList = {
     {"StartRoulette", Remotes.StartRoulette},
     {"Preload", Remotes.Preload},
@@ -1352,25 +1467,18 @@ local boundList = {
 }
 for _, pair in ipairs(boundList) do
     local name, rem = pair[1], pair[2]
-    local row = mk("Frame", {
-        Size=UDim2.new(1,0,0,20),
-        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.35,
-        BorderSizePixel=0,
-    }, RemotePage)
+    local row = mk("Frame", {Size=UDim2.new(1,0,0,20),
+        BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.35, BorderSizePixel=0}, RemotePage)
     corner(row, UDim.new(0,5)); pad(row, 8)
-    mk("TextLabel", {
-        Size=UDim2.new(0.5,0,1,0), BackgroundTransparency=1, Text=name,
+    mk("TextLabel", {Size=UDim2.new(0.5,0,1,0), BackgroundTransparency=1, Text=name,
         TextColor3=T.Text, Font=Enum.Font.Code, TextSize=9,
-        TextXAlignment=Enum.TextXAlignment.Left,
-    }, row)
+        TextXAlignment=Enum.TextXAlignment.Left}, row)
     local status = rem and "BOUND" or "MISSING"
     local statusColor = rem and T.Success or T.Accent
-    local sbtn = mk("TextButton", {
-        Size=UDim2.new(0.5,0,1,0), Position=UDim2.new(0.5,0,0,0),
-        BackgroundTransparency=1, Text=status,
-        TextColor3=statusColor, Font=Enum.Font.GothamBold, TextSize=9,
-        TextXAlignment=Enum.TextXAlignment.Right, AutoButtonColor=false,
-    }, row)
+    local sbtn = mk("TextButton", {Size=UDim2.new(0.5,0,1,0), Position=UDim2.new(0.5,0,0,0),
+        BackgroundTransparency=1, Text=status, TextColor3=statusColor,
+        Font=Enum.Font.GothamBold, TextSize=9,
+        TextXAlignment=Enum.TextXAlignment.Right, AutoButtonColor=false}, row)
     sbtn.MouseButton1Click:Connect(function()
         if rem and setclipboard then
             setclipboard(rem:GetFullName())
@@ -1402,19 +1510,25 @@ button(RemotePage, "Show Current Knife", nil, function()
     if k then
         if setclipboard then setclipboard(k:GetFullName()) end
         notify("Knife", k:GetFullName(), "info")
-    else notify("Knife","Not holding one.","error") end
+    else notify("Knife","Not holding.","error") end
 end)
 
--- ═══════════════════════════════════════════════════════════
 -- LIVE HEADER READOUT
--- ═══════════════════════════════════════════════════════════
 task.spawn(function()
     while true do
         local k = getKillerName()
         killerLbl.Text = "KILLER  " .. (k == "—" and "—" or k:upper())
+        local d = distToKiller()
+        distLbl.Text = "DIST  " .. (d and (math.floor(d).."m") or "—")
         local t = getTimeLeft()
         timeLbl.Text = "⏱  " .. (t and fmtTime(t) or "--:--")
-        task.wait(0.5)
+        -- pulse killer label if close
+        if d and d < 20 and not isKiller(LocalPlayer) then
+            killerLbl.TextColor3 = Color3.fromRGB(255,255,255)
+        else
+            killerLbl.TextColor3 = T.Accent
+        end
+        task.wait(0.4)
     end
 end)
 
@@ -1427,6 +1541,7 @@ local function shutdown()
     shutdownDone = true
     State.AutoKill=false; State.AutoBecomeKiller=false; State.AutoEscape=false
     State.AutoSavePlayer=false; State.TPOnDowned=false; State.AutoBreakFree=false
+    State.AutoDodge=false; State.AntiTrap=false; State.Fullbright=false
     for _, c in ipairs(CONNECTIONS) do pcall(function() c:Disconnect() end) end
     CONNECTIONS = {}
     for _, d in pairs(playerData) do
@@ -1436,6 +1551,7 @@ local function shutdown()
     for _, h in pairs(lockerHL) do pcall(function() h:Destroy() end) end
     for _, h in pairs(trapHL) do pcall(function() h:Destroy() end) end
     for _, h in pairs(exitHL) do pcall(function() h:Destroy() end) end
+    if killerArrow then pcall(function() killerArrow.att:Destroy() end) end
     pcall(function() fpsConn:Disconnect() end)
     pcall(function() gui:Destroy() end)
 end
@@ -1452,7 +1568,9 @@ local function toggleMinimize()
     end
 end
 
--- position-check binding (bypass GUI hit detection)
+-- ═══════════════════════════════════════════════════════════
+-- ★★★ CLOSE — 4-LAYER BIND (NO gpe guard) ★★★
+-- ═══════════════════════════════════════════════════════════
 local function pointIn(g, pos)
     local a = g.AbsolutePosition
     local s = g.AbsoluteSize
@@ -1460,8 +1578,28 @@ local function pointIn(g, pos)
        and pos.Y >= a.Y and pos.Y <= a.Y + s.Y
 end
 
-track(UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
+-- LAYER 1: direct click
+CloseBtn.MouseButton1Click:Connect(shutdown)
+MinBtn.MouseButton1Click:Connect(toggleMinimize)
+
+-- LAYER 2: Activated (raw input event)
+CloseBtn.Activated:Connect(shutdown)
+MinBtn.Activated:Connect(toggleMinimize)
+
+-- LAYER 3: InputBegan on the button itself
+CloseBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        shutdown()
+    end
+end)
+MinBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        toggleMinimize()
+    end
+end)
+
+-- LAYER 4: global position check — NO gpe guard
+track(UserInputService.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
        or input.UserInputType == Enum.UserInputType.Touch then
         local pos = input.Position
@@ -1474,9 +1612,11 @@ track(UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end))
 
-track(UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightControl then
+-- LAYER 5: hotkey fallback
+track(UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.End then
+        shutdown()
+    elseif input.KeyCode == Enum.KeyCode.RightControl then
         Main.Visible = not Main.Visible
     elseif input.KeyCode == Enum.KeyCode.RightShift then
         shutdown()
@@ -1493,4 +1633,4 @@ for _, b in ipairs(Sidebar:GetChildren()) do
 end
 
 task.wait(0.3)
-notify("Survive The Killer","v1.0 · RightCtrl toggle · RightShift unload","success")
+notify("Survive The Killer","v1.1 · End key = force close · RightCtrl toggle","success")
