@@ -1,7 +1,6 @@
--- FXA CANNON v5.0 | Survive The Killer | Delta Executor
--- Premium rebuild | 450x380 | All features restored
--- Tabs: Main · ESP · Move · Players · My Self · Remotes
--- Close: InputBegan (unblockable) | RightCtrl toggle | RightShift unload
+-- FXA CANNON v5.1 | Survive The Killer | Delta Executor
+-- FIX: Close/Min pakai UserInputService position check (bypass GUI Active)
+-- Restored: Auto Escape remote-fire, Auto Save, semua fitur v5.0
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
@@ -15,29 +14,21 @@ local Workspace         = game:GetService("Workspace")
 local LocalPlayer       = Players.LocalPlayer
 local SESSION_START     = tick()
 
--- ═══════════════════════════════════════════════════════════
--- CONFIG
--- ═══════════════════════════════════════════════════════════
 local CONFIG = {
     BackgroundURL = "https://files.catbox.moe/0oc9zi.jpeg",
     LogoOverride  = "",
     Theme = {
         Bg        = Color3.fromRGB(9, 9, 12),
-        BgGlass   = Color3.fromRGB(16, 16, 20),
         Panel     = Color3.fromRGB(22, 22, 27),
         PanelAlt  = Color3.fromRGB(28, 28, 34),
-        PanelHi   = Color3.fromRGB(36, 36, 44),
         Border    = Color3.fromRGB(48, 48, 58),
-        BorderHi  = Color3.fromRGB(64, 64, 76),
         Accent    = Color3.fromRGB(235, 32, 44),
         AccentDim = Color3.fromRGB(120, 18, 24),
         Text      = Color3.fromRGB(240, 240, 245),
         TextHi    = Color3.fromRGB(255, 255, 255),
         TextDim   = Color3.fromRGB(140, 140, 155),
-        TextMute  = Color3.fromRGB(90, 90, 105),
         Success   = Color3.fromRGB(74, 222, 128),
         Info      = Color3.fromRGB(96, 165, 250),
-        Gold      = Color3.fromRGB(250, 204, 21),
     },
     LockerNames={"locker","closet","cabinet","wardrobe","hide"},
     TrapNames={"trap","beartrap","spike","mousetrap"},
@@ -58,9 +49,6 @@ end
 local BG_ASSET = loadAsset(CONFIG.BackgroundURL, "fxa_bg.png")
 local LOGO_ASSET = CONFIG.LogoOverride ~= "" and CONFIG.LogoOverride or BG_ASSET
 
--- ═══════════════════════════════════════════════════════════
--- STATE
--- ═══════════════════════════════════════════════════════════
 local State = {
     AutoBecomeKiller=false, AutoKill=false, AutoEscape=false,
     AutoBreakFree=true, AutoSavePlayer=false, TPOnDowned=false,
@@ -73,9 +61,6 @@ local State = {
 local CONNECTIONS = {}
 local function track(c) table.insert(CONNECTIONS, c); return c end
 
--- ═══════════════════════════════════════════════════════════
--- UTIL
--- ═══════════════════════════════════════════════════════════
 local function char() return LocalPlayer.Character end
 local function hrp() local c=char(); return c and c:FindFirstChild("HumanoidRootPart") end
 local function hum() local c=char(); return c and c:FindFirstChildOfClass("Humanoid") end
@@ -151,6 +136,19 @@ local Remotes = {
     KnifeSwing     = safe(KnifeTpl, "SwingKnife"),
 }
 
+-- discover escape-related remotes for Auto Escape
+local EscapeRemotes = {}
+task.spawn(function()
+    for _, o in ipairs(RS:GetDescendants()) do
+        if o:IsA("RemoteEvent") or o:IsA("RemoteFunction") then
+            local n = o.Name:lower()
+            if (n:find("escape") or n:find("exit") or n:find("breakfree") or n:find("break")) then
+                table.insert(EscapeRemotes, o)
+            end
+        end
+    end
+end)
+
 local function getMyKnife() local c=char(); if not c then return nil end return c:FindFirstChild("Knife") end
 local function getKnifeHitRemote()
     local k = getMyKnife(); if k then local h = k:FindFirstChild("OnHit"); if h then return h end end
@@ -205,7 +203,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO-KILL
 local lastKill = 0
 local function nearestSurvivor()
     local myHrp = hrp(); if not myHrp then return nil end
@@ -272,7 +269,7 @@ task.spawn(function()
     end
 end)
 
--- AUTO-SAVE
+-- AUTO SAVE
 local function findProximityPrompt(c)
     if not c then return nil end
     for _, d in ipairs(c:GetDescendants()) do
@@ -339,6 +336,11 @@ task.spawn(function()
                     Remotes.BreakFree:FireServer(LocalPlayer)
                 end
             end)
+            for _, r in ipairs(EscapeRemotes) do
+                pcall(function()
+                    if r:IsA("RemoteEvent") then r:FireServer() end
+                end)
+            end
         end
         task.wait(0.2)
     end
@@ -380,7 +382,7 @@ track(RunService.Heartbeat:Connect(function()
     end
 end))
 
--- AUTO-ESCAPE
+-- AUTO-ESCAPE — door-gated TP + fire escape remotes
 local function findExitDoor()
     local myHrp = hrp(); if not myHrp then return nil end
     local best, bestDist = nil, math.huge
@@ -415,6 +417,16 @@ task.spawn(function()
                 local look = d.CFrame.LookVector
                 local f = d.Position - look * CONFIG.ExitFrontOffset
                 myHrp.CFrame = CFrame.new(f, f + look)
+                -- fire every escape-candidate remote
+                for _, r in ipairs(EscapeRemotes) do
+                    pcall(function()
+                        if r:IsA("RemoteEvent") then
+                            r:FireServer()
+                            r:FireServer(d)
+                            r:FireServer(LocalPlayer)
+                        end
+                    end)
+                end
             end
         end
         task.wait(0.25)
@@ -565,7 +577,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════
--- UI HELPERS
+-- UI
 -- ═══════════════════════════════════════════════════════════
 local T = CONFIG.Theme
 local mk = function(c,p,par) local o=Instance.new(c) for k,v in pairs(p or {}) do o[k]=v end if par then o.Parent=par end return o end
@@ -616,9 +628,6 @@ mk("UIGradient", {
         NumberSequenceKeypoint.new(1,0.8)}),
 }, BGDim)
 
--- ═══════════════════════════════════════════════════════════
--- TOP BAR — logo, title, live killer/time readouts, buttons
--- ═══════════════════════════════════════════════════════════
 local TopBar = mk("Frame", {
     Size=UDim2.new(1,0,0,62),
     BackgroundColor3=Color3.fromRGB(14,14,18),
@@ -626,7 +635,6 @@ local TopBar = mk("Frame", {
     BorderSizePixel=0, ZIndex=10, Active=true,
 }, Main)
 
--- circular logo
 local LOGO_SIZE = 40
 local Logo = mk("ImageLabel", {
     Name="Logo",
@@ -653,7 +661,6 @@ mk("TextLabel", {
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=11,
 }, TopBar)
 
--- Live killer / time readouts (top-right area)
 local killerLbl = mk("TextLabel", {
     Size=UDim2.fromOffset(140,14), Position=UDim2.new(1,-155,0,14),
     BackgroundTransparency=1, Text="KILLER  —",
@@ -667,14 +674,13 @@ local timeLbl = mk("TextLabel", {
     TextXAlignment=Enum.TextXAlignment.Right, ZIndex=11,
 }, TopBar)
 
--- Close / Minimize
+-- ═══ CLOSE / MIN BUTTONS ═══
 local CloseBtn = mk("TextButton", {
     Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-34,0,18),
     BackgroundColor3=Color3.fromRGB(70,22,26),
     Text="×", TextColor3=T.TextHi,
     Font=Enum.Font.GothamBlack, TextSize=15,
     BorderSizePixel=0, ZIndex=200, AutoButtonColor=false,
-    Active=true, Selectable=true,
 }, TopBar)
 corner(CloseBtn, UDim.new(0,7))
 stroke(CloseBtn, T.Accent, 1)
@@ -685,21 +691,16 @@ local MinBtn = mk("TextButton", {
     Text="—", TextColor3=T.TextHi,
     Font=Enum.Font.GothamBlack, TextSize=14,
     BorderSizePixel=0, ZIndex=200, AutoButtonColor=false,
-    Active=true, Selectable=true,
 }, TopBar)
 corner(MinBtn, UDim.new(0,7))
 stroke(MinBtn, T.Border, 1)
 
--- Divider under top bar
 local topDiv = mk("Frame", {
     Size=UDim2.new(1,-20,0,1), Position=UDim2.fromOffset(10,62),
     BackgroundColor3=T.Border, BackgroundTransparency=0.4,
     BorderSizePixel=0, ZIndex=9,
 }, Main)
 
--- ═══════════════════════════════════════════════════════════
--- SIDEBAR
--- ═══════════════════════════════════════════════════════════
 local SIDEBAR_W = 108
 local Sidebar = mk("Frame", {
     Size=UDim2.new(0,SIDEBAR_W,1,-72), Position=UDim2.fromOffset(10,70),
@@ -709,7 +710,6 @@ local Sidebar = mk("Frame", {
 corner(Sidebar, UDim.new(0,10)); pad(Sidebar, 6)
 mk("UIListLayout", {Padding=UDim.new(0,4), SortOrder=Enum.SortOrder.LayoutOrder}, Sidebar)
 
--- Content
 local Content = mk("ScrollingFrame", {
     Size=UDim2.new(1, -(SIDEBAR_W + 10 + 6 + 10), 1, -72),
     Position=UDim2.fromOffset(10 + SIDEBAR_W + 6, 70),
@@ -790,7 +790,6 @@ local function createTabButton(title, key)
     return page
 end
 
--- Premium section header with accent underline
 local function sectionHeader(parent, title)
     local holder = mk("Frame", {
         Size=UDim2.new(1,0,0,22),
@@ -814,21 +813,17 @@ local function sectionHeader(parent, title)
     return holder
 end
 
--- Premium toggle row — status pill on the left
 local function toggle(parent, title, desc, default, cb)
     local row = mk("Frame", {
         Size=UDim2.new(1,0,0, desc and 40 or 30),
         BackgroundColor3=T.PanelAlt, BackgroundTransparency=0.25, BorderSizePixel=0,
     }, parent)
     corner(row, UDim.new(0,8)); pad(row, 10)
-
-    -- left accent bar (lights up when on)
     local bar = mk("Frame", {
         Size=UDim2.new(0,3,1,-12), Position=UDim2.fromOffset(0,6),
         BackgroundColor3=T.Border, BorderSizePixel=0, ZIndex=2,
     }, row)
     corner(bar, UDim.new(1,0))
-
     mk("TextLabel", {
         Size=UDim2.new(1,-50,0, desc and 14 or 30),
         Position=UDim2.fromOffset(12,0),
@@ -845,7 +840,6 @@ local function toggle(parent, title, desc, default, cb)
             TextXAlignment=Enum.TextXAlignment.Left,
         }, row)
     end
-
     local st = default or false
     local sw = mk("TextButton", {
         Size=UDim2.fromOffset(32,16), Position=UDim2.new(1,-32,0.5,-8),
@@ -859,20 +853,16 @@ local function toggle(parent, title, desc, default, cb)
         BackgroundColor3=Color3.new(1,1,1), BorderSizePixel=0,
     }, sw)
     corner(knob, UDim.new(1,0))
-
     if st then bar.BackgroundColor3 = T.Accent end
-
     row.MouseEnter:Connect(function() row.BackgroundTransparency=0.05 end)
     row.MouseLeave:Connect(function() row.BackgroundTransparency=0.25 end)
     sw.MouseButton1Click:Connect(function()
         st = not st
         if st then
-            sw.BackgroundColor3=T.Accent
-            bar.BackgroundColor3=T.Accent
+            sw.BackgroundColor3=T.Accent; bar.BackgroundColor3=T.Accent
             TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(1,-14,0.5,-6)}):Play()
         else
-            sw.BackgroundColor3=T.Border
-            bar.BackgroundColor3=T.Border
+            sw.BackgroundColor3=T.Border; bar.BackgroundColor3=T.Border
             TweenService:Create(knob, TweenInfo.new(0.12), {Position=UDim2.new(0,2,0.5,-6)}):Play()
         end
         if cb then pcall(cb, st) end
@@ -941,13 +931,11 @@ local function button(parent, title, desc, cb)
         Text="", BorderSizePixel=0, AutoButtonColor=false,
     }, parent)
     corner(row, UDim.new(0,8)); pad(row, 10)
-    -- left accent bar (static)
     local bar = mk("Frame", {
         Size=UDim2.new(0,3,1,-12), Position=UDim2.fromOffset(0,6),
         BackgroundColor3=T.AccentDim, BorderSizePixel=0, ZIndex=2,
     }, row)
     corner(bar, UDim.new(1,0))
-
     mk("TextLabel", {
         Size=UDim2.new(1,0,0, desc and 14 or 30),
         Position=UDim2.fromOffset(12,0),
@@ -973,7 +961,6 @@ local function button(parent, title, desc, cb)
     end)
 end
 
--- Notifications
 local notifHolder = mk("Frame", {
     Size=UDim2.fromOffset(220,260), Position=UDim2.new(1,-236,1,-280),
     BackgroundTransparency=1, ZIndex=100,
@@ -1017,7 +1004,7 @@ local function notify(title, text, kind)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- TAB: MAIN
+-- TABS
 -- ═══════════════════════════════════════════════════════════
 local MainPage = createTabButton("Main", "main")
 
@@ -1037,7 +1024,7 @@ button(MainPage, "Force Kill Nearest (once)", nil, function()
 end)
 
 sectionHeader(MainPage, "Escape")
-toggle(MainPage, "Auto Escape", "Waits for door open, TP in front, fire", false, function(v)
+toggle(MainPage, "Auto Escape", "Door-gated TP + fire escape remotes", false, function(v)
     State.AutoEscape = v
     if v then notify("Auto Escape","Watching door state.","info") end
 end)
@@ -1069,35 +1056,28 @@ button(MainPage, "Save Nearest Downed (once)", nil, function()
     else notify("Save","No downed player.","error") end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: ESP
--- ═══════════════════════════════════════════════════════════
 local ESPPage = createTabButton("ESP", "esp")
 sectionHeader(ESPPage, "Player ESP")
 toggle(ESPPage, "Survivor ESP (Blue)", nil, false, function(v) State.ESP_Survivor=v end)
 toggle(ESPPage, "Killer ESP (Red)", nil, false, function(v) State.ESP_Killer=v end)
 toggle(ESPPage, "Downed ESP (Gold)", nil, false, function(v) State.ESP_Downed=v end)
-toggle(ESPPage, "Distance + Role Tag", "Shows role & meters under name", true, function(v) State.ESP_Distance=v end)
-
+toggle(ESPPage, "Distance + Role Tag", nil, true, function(v) State.ESP_Distance=v end)
 sectionHeader(ESPPage, "Object ESP")
 toggle(ESPPage, "Locker ESP", "Red = occupied", false, function(v) State.ESP_Lockers=v end)
 toggle(ESPPage, "Trap ESP", nil, false, function(v) State.ESP_Traps=v end)
 toggle(ESPPage, "Exit ESP", nil, false, function(v) State.ESP_Exits=v end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: MOVE
--- ═══════════════════════════════════════════════════════════
 local MovePage = createTabButton("Move", "move")
 sectionHeader(MovePage, "Character")
 slider(MovePage, "Walk Speed", 16, 250, 16, function(v) State.Speed=v end)
 slider(MovePage, "Jump Power", 50, 400, 50, function(v) State.Jump=v end)
-toggle(MovePage, "Noclip", "Walk through walls", false, function(v) State.Noclip=v end)
+toggle(MovePage, "Noclip", nil, false, function(v) State.Noclip=v end)
 toggle(MovePage, "Godmode", "Health lock + strip TouchTransmitter", false, function(v)
     State.Godmode=v
     if v then notify("Godmode","Active.","success") end
 end)
 toggle(MovePage, "Infinite Stamina", nil, false, function(v) State.InfiniteStamina=v end)
-toggle(MovePage, "Anti-AFK", "Prevents idle kick", false, function(v)
+toggle(MovePage, "Anti-AFK", nil, false, function(v)
     State.AntiAFK=v
     if v then
         track(LocalPlayer.Idled:Connect(function()
@@ -1106,9 +1086,6 @@ toggle(MovePage, "Anti-AFK", "Prevents idle kick", false, function(v)
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: PLAYERS
--- ═══════════════════════════════════════════════════════════
 local PlayerPage = createTabButton("Players", "players")
 sectionHeader(PlayerPage, "Click to TP")
 
@@ -1173,11 +1150,9 @@ track(Players.PlayerAdded:Connect(function() task.wait(0.5) refreshPlayerList() 
 track(Players.PlayerRemoving:Connect(function() task.wait(0.5) refreshPlayerList() end))
 
 sectionHeader(PlayerPage, "Downed")
-toggle(PlayerPage, "Auto TP to Downed", "Continuously TP to nearest knocked", false, function(v) State.TPOnDowned=v end)
+toggle(PlayerPage, "Auto TP to Downed", nil, false, function(v) State.TPOnDowned=v end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: MY SELF
--- ═══════════════════════════════════════════════════════════
+-- MY SELF
 local SelfPage = createTabButton("My Self", "self")
 sectionHeader(SelfPage, "Live Dashboard")
 
@@ -1345,12 +1320,9 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- TAB: REMOTES
--- ═══════════════════════════════════════════════════════════
+-- REMOTES
 local RemotePage = createTabButton("Remotes", "remotes")
 sectionHeader(RemotePage, "Bound Remotes")
-
 local boundList = {
     {"StartRoulette", Remotes.StartRoulette},
     {"Preload", Remotes.Preload},
@@ -1392,7 +1364,7 @@ for _, pair in ipairs(boundList) do
 end
 
 sectionHeader(RemotePage, "Scan")
-button(RemotePage, "Scan All Remotes", "Lists in console + clipboard", function()
+button(RemotePage, "Scan All Remotes", "Console + clipboard", function()
     local found = {}
     for _, root in ipairs({ReplicatedStorage, Workspace}) do
         for _, o in ipairs(root:GetDescendants()) do
@@ -1409,7 +1381,7 @@ button(RemotePage, "Scan All Remotes", "Lists in console + clipboard", function(
     end
 end)
 
-button(RemotePage, "Show Current Knife", "Copy live knife path", function()
+button(RemotePage, "Show Current Knife", nil, function()
     local k = getMyKnife()
     if k then
         if setclipboard then setclipboard(k:GetFullName()) end
@@ -1417,9 +1389,7 @@ button(RemotePage, "Show Current Knife", "Copy live knife path", function()
     else notify("Knife","Not holding one.","error") end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- LIVE HEADER READOUT — killer + time left in top bar
--- ═══════════════════════════════════════════════════════════
+-- live header readout
 task.spawn(function()
     while true do
         local k = getKillerName()
@@ -1452,28 +1422,48 @@ local function shutdown()
     pcall(function() gui:Destroy() end)
 end
 
-CloseBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-       or input.UserInputType == Enum.UserInputType.Touch then
-        shutdown()
-    end
-end)
+-- ═══════════════════════════════════════════════════════════
+-- ★★★ THE FIX: UserInputService position check ★★★
+-- Bypasses GUI Active state, ZIndex, hit-detection entirely.
+-- On every click/touch, check if position is inside button bounds.
+-- ═══════════════════════════════════════════════════════════
+local function pointIn(guiObj, pos)
+    local a = guiObj.AbsolutePosition
+    local s = guiObj.AbsoluteSize
+    return pos.X >= a.X and pos.X <= a.X + s.X
+       and pos.Y >= a.Y and pos.Y <= a.Y + s.Y
+end
 
-local minimized = false
-MinBtn.InputBegan:Connect(function(input)
+track(UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1
        or input.UserInputType == Enum.UserInputType.Touch then
-        minimized = not minimized
-        if minimized then
-            Main:TweenSize(UDim2.fromOffset(W,62), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
-            Sidebar.Visible=false; Content.Visible=false; topDiv.Visible=false
-        else
-            Main:TweenSize(UDim2.fromOffset(W,H), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
-            Sidebar.Visible=true; Content.Visible=true; topDiv.Visible=true
+        local pos = input.Position
+        if CloseBtn.Visible and pointIn(CloseBtn, pos) then
+            shutdown()
+            return
+        end
+        if MinBtn.Visible and pointIn(MinBtn, pos) then
+            toggleMinimize()
+            return
         end
     end
-end)
+end))
 
+function toggleMinimize()
+    minimized = not minimized
+    if minimized then
+        Main:TweenSize(UDim2.fromOffset(W,62), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
+        Sidebar.Visible=false; Content.Visible=false; topDiv.Visible=false
+    else
+        Main:TweenSize(UDim2.fromOffset(W,H), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
+        Sidebar.Visible=true; Content.Visible=true; topDiv.Visible=true
+    end
+end
+
+minimized = false
+
+-- keyboard fallbacks
 track(UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.RightControl then
@@ -1493,4 +1483,4 @@ for _, b in ipairs(Sidebar:GetChildren()) do
 end
 
 task.wait(0.3)
-notify("FXA CANNON","v5.0 · RightCtrl toggle · RightShift unload","success")
+notify("FXA CANNON","v5.1 · RightCtrl toggle · RightShift unload","success")
