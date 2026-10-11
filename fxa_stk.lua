@@ -1,8 +1,5 @@
---[[
-    Survive The Killer v1.1
-    (masih dibuat v1)
-    Delta Executor | Close fixed (4-layer bind) | 10 new features
-]]
+-- Survive The Killer | Delta Executor
+-- v3 pattern close binding | all features
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
@@ -51,7 +48,7 @@ local State = {
     AutoBecomeKiller=false, AutoKill=false, AutoEscape=false,
     AutoBreakFree=true, AutoSavePlayer=false, TPOnDowned=false,
     AutoDodge=false, AntiTrap=false, KillerAlert=true, InfiniteJump=false,
-    Fullbright=false, KillNotifySound=false,
+    Fullbright=false,
     Speed=16, Jump=50, Noclip=false, Godmode=false, InfiniteStamina=false, AntiAFK=false, FOV=70,
     ESP_Survivor=false, ESP_Killer=false, ESP_Downed=false,
     ESP_Lockers=false, ESP_Traps=false, ESP_Exits=false, ESP_Distance=true, ESP_KillerArrow=false,
@@ -132,9 +129,6 @@ local function distToKiller()
     return (a.Position - b.Position).Magnitude
 end
 
--- ═══════════════════════════════════════════════════════════
--- REMOTES
--- ═══════════════════════════════════════════════════════════
 local RS = ReplicatedStorage
 local function safe(p,n) if not p then return nil end return p:FindFirstChild(n) end
 local CR = safe(RS, "CutsceneRemotes")
@@ -176,9 +170,6 @@ local function getKnifeSwingRemote()
     return Remotes.KnifeSwing
 end
 
--- ═══════════════════════════════════════════════════════════
--- CORE LOOPS
--- ═══════════════════════════════════════════════════════════
 local lastRoundSignal = 0
 track(Workspace.ChildAdded:Connect(function(c)
     if c:IsA("Model") and c.Name:lower():find("map") then lastRoundSignal = os.clock() end
@@ -286,7 +277,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO SAVE
 local function findProximityPrompt(c)
     if not c then return nil end
     for _, d in ipairs(c:GetDescendants()) do
@@ -360,7 +350,6 @@ task.spawn(function()
     end
 end)
 
--- BREAK FREE
 task.spawn(function()
     while true do
         if State.AutoBreakFree and isGrabbed() then
@@ -378,7 +367,6 @@ task.spawn(function()
     end
 end)
 
--- NEW: AUTO DODGE
 task.spawn(function()
     while true do
         if State.AutoDodge and not isKiller(LocalPlayer) then
@@ -403,7 +391,6 @@ task.spawn(function()
     end
 end)
 
--- NEW: ANTI-TRAP
 task.spawn(function()
     while true do
         if State.AntiTrap then
@@ -425,7 +412,6 @@ task.spawn(function()
     end
 end)
 
--- NEW: KILLER ALERT + SOUND
 local lastAlertDist = math.huge
 task.spawn(function()
     while true do
@@ -448,7 +434,6 @@ task.spawn(function()
     end
 end)
 
--- HEARTBEAT
 track(RunService.Heartbeat:Connect(function()
     if State.Godmode then
         local h = hum()
@@ -484,7 +469,6 @@ track(RunService.Heartbeat:Connect(function()
     end
 end))
 
--- NEW: FULLBRIGHT
 local originalAmbient, originalOutdoor, originalBrightness
 task.spawn(function()
     while true do
@@ -510,7 +494,6 @@ task.spawn(function()
     end
 end)
 
--- NEW: FOV
 task.spawn(function()
     while true do
         if Camera and Camera.FieldOfView ~= State.FOV then
@@ -520,7 +503,6 @@ task.spawn(function()
     end
 end)
 
--- NEW: INFINITE JUMP
 track(UserInputService.JumpRequest:Connect(function()
     if State.InfiniteJump then
         local h = hum()
@@ -528,7 +510,6 @@ track(UserInputService.JumpRequest:Connect(function()
     end
 end))
 
--- AUTO-ESCAPE
 local function findExitDoor()
     local myHrp = hrp(); if not myHrp then return nil end
     local best, bestDist = nil, math.huge
@@ -576,9 +557,6 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- ESP
--- ═══════════════════════════════════════════════════════════
 local playerData = {}
 local killerArrow = nil
 
@@ -661,15 +639,14 @@ local function playerESP()
     end
 end
 
--- KILLER ARROW — 3D arrow above your own head pointing to killer
 local function ensureKillerArrow()
     if not State.ESP_KillerArrow then
-        if killerArrow then killerArrow:Destroy(); killerArrow = nil end
+        if killerArrow then killerArrow.att:Destroy(); killerArrow.att2:Destroy(); killerArrow = nil end
         return
     end
     local myHead = char() and char():FindFirstChild("Head")
     if not myHead then return end
-    if not killerArrow or not killerArrow.Parent then
+    if not killerArrow or not killerArrow.att.Parent then
         local att = Instance.new("Attachment", myHead)
         att.Name = "STK_ArrowAtt"
         local beam = Instance.new("Beam", att)
@@ -754,9 +731,6 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- UI
--- ═══════════════════════════════════════════════════════════
 local T = CONFIG.Theme
 local mk = function(c,p,par) local o=Instance.new(c) for k,v in pairs(p or {}) do o[k]=v end if par then o.Parent=par end return o end
 local corner = function(p,r) return mk("UICorner",{CornerRadius=r or UDim.new(0,8)},p) end
@@ -781,7 +755,7 @@ local W, H = CONFIG.WindowW, CONFIG.WindowH
 local Main = mk("Frame", {
     Name="Main", Size=UDim2.fromOffset(W,H),
     Position=UDim2.new(0.5,-W/2,0.5,-H/2),
-    BackgroundColor3=T.Bg, BorderSizePixel=0, ClipsDescendants=true, Active=true,
+    BackgroundColor3=T.Bg, BorderSizePixel=0, ClipsDescendants=true,
 }, gui)
 corner(Main, UDim.new(0,14)); stroke(Main, T.Border, 1)
 
@@ -819,7 +793,7 @@ mk("UIStroke", {Color=T.Accent, Thickness=2, ApplyStrokeMode=Enum.ApplyStrokeMod
 
 mk("TextLabel", {
     Size=UDim2.fromOffset(200,16), Position=UDim2.fromOffset(64,10),
-    BackgroundTransparency=1, Text="Survive The Killer v1.1",
+    BackgroundTransparency=1, Text="Survive The Killer",
     TextColor3=T.TextHi, Font=Enum.Font.GothamBlack, TextSize=13,
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=11,
 }, TopBar)
@@ -854,7 +828,7 @@ local CloseBtn = mk("TextButton", {
     BackgroundColor3=Color3.fromRGB(80,24,30),
     Text="×", TextColor3=T.TextHi,
     Font=Enum.Font.GothamBlack, TextSize=17,
-    BorderSizePixel=0, ZIndex=250, AutoButtonColor=false, Active=true,
+    BorderSizePixel=0, ZIndex=250, AutoButtonColor=false,
 }, TopBar)
 corner(CloseBtn, UDim.new(0,7))
 stroke(CloseBtn, T.Accent, 1.5)
@@ -864,7 +838,7 @@ local MinBtn = mk("TextButton", {
     BackgroundColor3=T.PanelAlt,
     Text="—", TextColor3=T.TextHi,
     Font=Enum.Font.GothamBlack, TextSize=15,
-    BorderSizePixel=0, ZIndex=250, AutoButtonColor=false, Active=true,
+    BorderSizePixel=0, ZIndex=250, AutoButtonColor=false,
 }, TopBar)
 corner(MinBtn, UDim.new(0,7))
 stroke(MinBtn, T.Border, 1)
@@ -1131,9 +1105,6 @@ local function notify(title, text, kind)
     end)
 end
 
--- ═══════════════════════════════════════════════════════════
--- TABS
--- ═══════════════════════════════════════════════════════════
 local MainPage = createTabButton("Main", "main")
 sectionHeader(MainPage, "Killer")
 toggle(MainPage, "Auto Become Killer", "StartRoulette + LoadPropKiller", false, function(v)
@@ -1194,7 +1165,6 @@ toggle(MainPage, "Anti-Trap", "TP away from nearest trap", false, function(v)
     if v then notify("Anti-Trap","Enabled.","success") end
 end)
 
--- ESP
 local ESPPage = createTabButton("ESP", "esp")
 sectionHeader(ESPPage, "Players")
 toggle(ESPPage, "Survivor (Blue)", nil, false, function(v) State.ESP_Survivor=v end)
@@ -1210,7 +1180,6 @@ toggle(ESPPage, "Locker ESP", nil, false, function(v) State.ESP_Lockers=v end)
 toggle(ESPPage, "Trap ESP", nil, false, function(v) State.ESP_Traps=v end)
 toggle(ESPPage, "Exit ESP", nil, false, function(v) State.ESP_Exits=v end)
 
--- MOVE
 local MovePage = createTabButton("Move", "move")
 sectionHeader(MovePage, "Character")
 slider(MovePage, "Walk Speed", 16, 250, 16, function(v) State.Speed=v end)
@@ -1224,7 +1193,7 @@ end)
 toggle(MovePage, "Infinite Stamina", nil, false, function(v) State.InfiniteStamina=v end)
 toggle(MovePage, "Infinite Jump", "Jump in mid-air", false, function(v)
     State.InfiniteJump=v
-    if v then notify("Inf Jump","Hold space to fly up.","success") end
+    if v then notify("Inf Jump","Hold space.","success") end
 end)
 toggle(MovePage, "Anti-AFK", nil, false, function(v)
     State.AntiAFK=v
@@ -1235,7 +1204,6 @@ toggle(MovePage, "Anti-AFK", nil, false, function(v)
     end
 end)
 
--- VISION
 local VisionPage = createTabButton("Vision", "vision")
 sectionHeader(VisionPage, "Lighting")
 toggle(VisionPage, "Fullbright", "Max ambient + no fog", false, function(v)
@@ -1247,7 +1215,6 @@ toggle(VisionPage, "Killer Alert Sound", "Audio ping when killer approaches", tr
     if v then notify("Alert","Sound on.","info") end
 end)
 
--- PLAYERS
 local PlayerPage = createTabButton("Players", "players")
 sectionHeader(PlayerPage, "Click to TP")
 local playerListHolder = mk("Frame", {
@@ -1303,7 +1270,6 @@ track(Players.PlayerRemoving:Connect(function() task.wait(0.5) refreshPlayerList
 sectionHeader(PlayerPage, "Downed")
 toggle(PlayerPage, "Auto TP to Downed", nil, false, function(v) State.TPOnDowned=v end)
 
--- MY SELF
 local SelfPage = createTabButton("My Self", "self")
 sectionHeader(SelfPage, "Live Dashboard")
 local function dataRow(parent, label)
@@ -1431,7 +1397,7 @@ add("Executor", function()
 end)
 
 button(SelfPage, "Copy Dashboard", "Full snapshot to clipboard", function()
-    local buf = {"── STK v1.1 · MY SELF ──"}
+    local buf = {"── STK · MY SELF ──"}
     for _, e in ipairs(R) do table.insert(buf, e.label..": "..e.val.Text) end
     if setclipboard then
         setclipboard(table.concat(buf, "\n"))
@@ -1451,7 +1417,6 @@ task.spawn(function()
     end
 end)
 
--- REMOTES
 local RemotePage = createTabButton("Remotes", "remotes")
 sectionHeader(RemotePage, "Bound")
 local boundList = {
@@ -1513,7 +1478,6 @@ button(RemotePage, "Show Current Knife", nil, function()
     else notify("Knife","Not holding.","error") end
 end)
 
--- LIVE HEADER READOUT
 task.spawn(function()
     while true do
         local k = getKillerName()
@@ -1522,7 +1486,6 @@ task.spawn(function()
         distLbl.Text = "DIST  " .. (d and (math.floor(d).."m") or "—")
         local t = getTimeLeft()
         timeLbl.Text = "⏱  " .. (t and fmtTime(t) or "--:--")
-        -- pulse killer label if close
         if d and d < 20 and not isKiller(LocalPlayer) then
             killerLbl.TextColor3 = Color3.fromRGB(255,255,255)
         else
@@ -1532,13 +1495,9 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- SHUTDOWN
--- ═══════════════════════════════════════════════════════════
-local shutdownDone = false
-local function shutdown()
-    if shutdownDone then return end
-    shutdownDone = true
+local minimized = false
+
+CloseBtn.MouseButton1Click:Connect(function()
     State.AutoKill=false; State.AutoBecomeKiller=false; State.AutoEscape=false
     State.AutoSavePlayer=false; State.TPOnDowned=false; State.AutoBreakFree=false
     State.AutoDodge=false; State.AntiTrap=false; State.Fullbright=false
@@ -1554,10 +1513,9 @@ local function shutdown()
     if killerArrow then pcall(function() killerArrow.att:Destroy() end) end
     pcall(function() fpsConn:Disconnect() end)
     pcall(function() gui:Destroy() end)
-end
+end)
 
-local minimized = false
-local function toggleMinimize()
+MinBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
         Main:TweenSize(UDim2.fromOffset(W,62), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
@@ -1566,60 +1524,14 @@ local function toggleMinimize()
         Main:TweenSize(UDim2.fromOffset(W,H), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
         Sidebar.Visible=true; Content.Visible=true; topDiv.Visible=true
     end
-end
-
--- ═══════════════════════════════════════════════════════════
--- ★★★ CLOSE — 4-LAYER BIND (NO gpe guard) ★★★
--- ═══════════════════════════════════════════════════════════
-local function pointIn(g, pos)
-    local a = g.AbsolutePosition
-    local s = g.AbsoluteSize
-    return pos.X >= a.X and pos.X <= a.X + s.X
-       and pos.Y >= a.Y and pos.Y <= a.Y + s.Y
-end
-
--- LAYER 1: direct click
-CloseBtn.MouseButton1Click:Connect(shutdown)
-MinBtn.MouseButton1Click:Connect(toggleMinimize)
-
--- LAYER 2: Activated (raw input event)
-CloseBtn.Activated:Connect(shutdown)
-MinBtn.Activated:Connect(toggleMinimize)
-
--- LAYER 3: InputBegan on the button itself
-CloseBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        shutdown()
-    end
-end)
-MinBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        toggleMinimize()
-    end
 end)
 
--- LAYER 4: global position check — NO gpe guard
-track(UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-       or input.UserInputType == Enum.UserInputType.Touch then
-        local pos = input.Position
-        if CloseBtn.Visible and Main.Visible and pointIn(CloseBtn, pos) then
-            shutdown(); return
-        end
-        if MinBtn.Visible and Main.Visible and pointIn(MinBtn, pos) then
-            toggleMinimize(); return
-        end
-    end
-end))
-
--- LAYER 5: hotkey fallback
-track(UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.End then
-        shutdown()
-    elseif input.KeyCode == Enum.KeyCode.RightControl then
+track(UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightControl then
         Main.Visible = not Main.Visible
     elseif input.KeyCode == Enum.KeyCode.RightShift then
-        shutdown()
+        CloseBtn.MouseButton1Click:Fire()
     end
 end))
 
@@ -1633,4 +1545,4 @@ for _, b in ipairs(Sidebar:GetChildren()) do
 end
 
 task.wait(0.3)
-notify("Survive The Killer","v1.1 · End key = force close · RightCtrl toggle","success")
+notify("Survive The Killer","Loaded. RightCtrl toggle · RightShift close","success")
