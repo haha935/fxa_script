@@ -1,6 +1,11 @@
--- FxA Supreme | Survive The Killer V1 | Delta Executor
--- Design v2: numbered tabs + status strip + card layout
--- Close fix: drag handler skip di area tombol
+--[[
+    FxA Supreme | Survive The Killer V1 | Delta Executor
+    Design: v2 (numbered tabs + status strip + card layout)
+    All features: AutoKiller, AutoKill, AutoEscape, AutoSave, TPKnock,
+    ESP (Survivor/Killer/Downed + Locker/Trap/Exit), My Self dashboard,
+    Auto Copy Remote, Godmode, Noclip, Fullbright, Killer Alert, Dodge, AntiTrap
+    Window: 440×410 centered | Close + Minimize | RightCtrl toggle | RightShift panic
+]]
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
@@ -73,7 +78,7 @@ local function isKiller(plr)
     local t = c:FindFirstChildOfClass("Tool")
     if t and (t.Name:lower():find("knife") or t.Name:lower():find("kill")) then return true end
     local h = c:FindFirstChildOfClass("Humanoid")
-    if h and h.DisplayName:lower():find("killer") then return true end
+    if h and h.DisplayName and h.DisplayName:lower():find("killer") then return true end
     return false
 end
 
@@ -179,6 +184,7 @@ track(Workspace.ChildAdded:Connect(function(c)
 end))
 track(LocalPlayer.CharacterAdded:Connect(function() lastRoundSignal = os.clock() end))
 
+-- AUTO KILLER (100% burst)
 task.spawn(function()
     while true do
         if State.AutoBecomeKiller and not isKiller(LocalPlayer) then
@@ -780,16 +786,13 @@ local BGDim = mk("Frame", {
 mk("UIGradient", {Rotation=90, Transparency=NumberSequence.new({
     NumberSequenceKeypoint.new(0,0.1), NumberSequenceKeypoint.new(1,0.85)})}, BGDim)
 
--- ═══════════════════════════════════════════════════════════
 -- TOP BAR
--- ═══════════════════════════════════════════════════════════
 local TopBar = mk("Frame", {
     Size=UDim2.new(1,0,0,60),
     BackgroundColor3=Color3.fromRGB(12,12,20), BackgroundTransparency=0.25,
     BorderSizePixel=0, ZIndex=10, Active=true,
 }, Main)
 
--- logo bulat sempurna
 local LOGO_SIZE = 42
 local Logo = mk("ImageLabel", {
     Name="Logo", Size=UDim2.fromOffset(LOGO_SIZE, LOGO_SIZE),
@@ -815,7 +818,6 @@ mk("TextLabel", {
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=11,
 }, TopBar)
 
--- CLOSE / MIN
 local CloseBtn = mk("TextButton", {
     Size=UDim2.fromOffset(26,26), Position=UDim2.new(1,-34,0,17),
     BackgroundColor3=Color3.fromRGB(90,26,34),
@@ -836,9 +838,7 @@ local MinBtn = mk("TextButton", {
 corner(MinBtn, UDim.new(0,7))
 stroke(MinBtn, T.Border, 1)
 
--- ═══════════════════════════════════════════════════════════
--- STATUS STRIP (3 kolom di bawah topbar)
--- ═══════════════════════════════════════════════════════════
+-- STATUS STRIP
 local StatusStrip = mk("Frame", {
     Size=UDim2.new(1,-20,0,32), Position=UDim2.fromOffset(10,62),
     BackgroundColor3=T.Panel, BackgroundTransparency=0.3,
@@ -863,7 +863,6 @@ local function statusCol(posX, label, color, initial)
         TextColor3=color, Font=Enum.Font.GothamBlack, TextSize=10,
         TextXAlignment=Enum.TextXAlignment.Center,
     }, holder)
-    -- divider
     if posX > 0 then
         mk("Frame", {
             Size=UDim2.new(0,1,0.6,0), Position=UDim2.new(0,-0.5,0.2,0),
@@ -877,9 +876,7 @@ local killerVal = statusCol(0, "KILLER", T.Accent, "—")
 local distVal = statusCol(0.33, "DISTANCE", T.Gold, "—")
 local timeVal = statusCol(0.66, "TIME LEFT", T.Info, "--:--")
 
--- ═══════════════════════════════════════════════════════════
--- SIDEBAR (numbered tabs)
--- ═══════════════════════════════════════════════════════════
+-- SIDEBAR
 local SIDEBAR_W = 96
 local Sidebar = mk("Frame", {
     Size=UDim2.new(0,SIDEBAR_W,1,-104), Position=UDim2.fromOffset(10,100),
@@ -902,9 +899,7 @@ local Content = mk("ScrollingFrame", {
 corner(Content, UDim.new(0,10)); pad(Content, 7)
 mk("UIListLayout", {Padding=UDim.new(0,5), SortOrder=Enum.SortOrder.LayoutOrder}, Content)
 
--- ═══════════════════════════════════════════════════════════
--- DRAG HANDLER — with button-area skip (this is the close fix)
--- ═══════════════════════════════════════════════════════════
+-- DRAG HANDLER with button-area skip
 do
     local dragging, dragStart, startPos
     local function isOverBtn(p, btn)
@@ -932,9 +927,7 @@ do
     end))
 end
 
--- ═══════════════════════════════════════════════════════════
--- TABS — numbered
--- ═══════════════════════════════════════════════════════════
+-- TABS
 local tabs, currentTab = {}, nil
 local function switchTab(n)
     for _,f in pairs(tabs) do f.Visible=false end
@@ -954,13 +947,13 @@ local function createTabButton(title, key)
     }, Sidebar)
     corner(btn, UDim.new(0,7))
 
-    local numLbl = mk("TextLabel", {
+    mk("TextLabel", {
         Size=UDim2.fromOffset(20,30), Position=UDim2.fromOffset(6,0),
         BackgroundTransparency=1, Text=numStr,
         TextColor3=T.AccentDim, Font=Enum.Font.GothamBlack, TextSize=8,
         TextXAlignment=Enum.TextXAlignment.Left,
     }, btn)
-    local txtLbl = mk("TextLabel", {
+    mk("TextLabel", {
         Size=UDim2.new(1,-30,1,0), Position=UDim2.fromOffset(24,0),
         BackgroundTransparency=1, Text=title,
         TextColor3=T.Text, Font=Enum.Font.GothamMedium, TextSize=10,
@@ -986,8 +979,6 @@ local function createTabButton(title, key)
         for _,b in ipairs(Sidebar:GetChildren()) do
             if b:IsA("TextButton") then
                 b.BackgroundTransparency=0.4
-                local a = b:FindFirstChild("TextLabel")
-                local idx = b:FindFirstChild("TextLabel")
                 for _,ch in ipairs(b:GetChildren()) do
                     if ch:IsA("TextLabel") then ch.TextColor3 = T.Text end
                 end
@@ -997,7 +988,7 @@ local function createTabButton(title, key)
         end
         btn.BackgroundTransparency=0.15
         for _,ch in ipairs(btn:GetChildren()) do
-            if ch:IsA("TextLabel") then ch.TextColor3 = (ch.Text == numStr) and T.Accent or T.Accent end
+            if ch:IsA("TextLabel") then ch.TextColor3 = T.Accent end
         end
         TweenService:Create(accent, TweenInfo.new(0.15), {Size=UDim2.new(0,3,0,18)}):Play()
         switchTab(key)
@@ -1171,9 +1162,7 @@ local function notify(title, text, kind)
     end)
 end
 
--- ═══════════════════════════════════════════════════════════
 -- TAB CONTENT
--- ═══════════════════════════════════════════════════════════
 local MainPage = createTabButton("Main", "main")
 sectionHeader(MainPage, "Killer")
 toggle(MainPage, "Auto Become Killer", "StartRoulette + LoadPropKiller", false, function(v)
@@ -1531,7 +1520,7 @@ button(RemotePage, "Show Current Knife", nil, function()
     else notify("Knife","Not holding.","error") end
 end)
 
--- status strip updater
+-- STATUS STRIP UPDATER
 task.spawn(function()
     while true do
         local k = getKillerName()
@@ -1552,9 +1541,7 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
 -- CLOSE / MIN
--- ═══════════════════════════════════════════════════════════
 local minimized = false
 
 CloseBtn.MouseButton1Click:Connect(function()
